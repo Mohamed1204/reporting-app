@@ -17,9 +17,9 @@ public class CompaniesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<CompanyDto>>> GetAll()
+    public async Task<ActionResult<List<CompanyDto>>> GetAll([FromQuery] string? name = null)
     {
-        var companies = await _companyService.GetAllAsync();
+        var companies = await _companyService.GetAllAsync(name);
         return Ok(companies);
     }
 

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ReportingApi1.Data;
 
@@ -11,9 +12,11 @@ using ReportingApi1.Data;
 namespace ReportingApi1.Migrations
 {
     [DbContext(typeof(VatReportingContext))]
-    partial class VatReportingContextModelSnapshot : ModelSnapshot
+    [Migration("20260409120657_AddProductsTable")]
+    partial class AddProductsTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -81,43 +84,6 @@ namespace ReportingApi1.Migrations
                         .IsUnique();
 
                     b.ToTable("Products");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            Category = "Electronics",
-                            Name = "Laptop",
-                            Price = 999.99m
-                        },
-                        new
-                        {
-                            Id = 2,
-                            Category = "Furniture",
-                            Name = "Desk Chair",
-                            Price = 249.99m
-                        },
-                        new
-                        {
-                            Id = 3,
-                            Category = "Stationery",
-                            Name = "Notebook",
-                            Price = 4.99m
-                        },
-                        new
-                        {
-                            Id = 4,
-                            Category = "Electronics",
-                            Name = "Monitor",
-                            Price = 399.99m
-                        },
-                        new
-                        {
-                            Id = 5,
-                            Category = "Furniture",
-                            Name = "Standing Desk",
-                            Price = 599.99m
-                        });
                 });
 
             modelBuilder.Entity("ReportingApi1.Entities.ReportingPeriod", b =>

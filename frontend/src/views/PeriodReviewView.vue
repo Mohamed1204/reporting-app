@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink } from 'vue-router'
 import { useFetch } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import {
@@ -11,21 +10,20 @@ import {
   type VatReport,
 } from '../stores/periods'
 
-const router = useRouter()
 const periodsStore = usePeriodsStore()
 const { selectedPeriodId } = storeToRefs(periodsStore)
-
-onMounted(() => {
-  periodsStore.clearSelection()
-})
 
 const { data, error, isFetching } = useFetch(VAT_REPORTS_ENDPOINT).json<VatReport[]>()
 
 const periods = computed(() => mapVatReportsToOpenPeriods(data.value ?? []))
 
-const selectedPeriod = computed(() =>
-  periods.value.find((period) => period.id === selectedPeriodId.value),
-)
+const displayedPeriods = computed(() => {
+  if (selectedPeriodId.value === null) {
+    return []
+  }
+
+  return periods.value.filter((period) => period.id === selectedPeriodId.value)
+})
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat('en-US', {
@@ -33,48 +31,41 @@ const formatDate = (value: string) =>
     day: 'numeric',
     year: 'numeric',
   }).format(new Date(value))
-
-const onSelectPeriod = async (id: number) => {
-  periodsStore.selectPeriod(id)
-  await router.push({ name: 'period-review' })
-}
 </script>
 
 <template>
-  <main class="periods-page">
+  <main class="review-page">
     <section class="hero">
-      <h1>Open Periods</h1>
-      <p>Select a period to continue.</p>
+      <h1>Period Review</h1>
+      <p>Your selected period is highlighted below.</p>
     </section>
 
     <p v-if="isFetching" class="state">Loading open periods...</p>
     <p v-else-if="error" class="state error">Failed to load periods. Try again later.</p>
 
-    <section v-else class="cards-grid">
-      <button
-        v-for="period in periods"
+    <section v-else-if="displayedPeriods.length > 0" class="cards-grid">
+      <article
+        v-for="period in displayedPeriods"
         :key="period.id"
         class="period-card"
-        :class="{ selected: selectedPeriodId === period.id }"
-        type="button"
-        @click="onSelectPeriod(period.id)"
+        :class="{ selected: true }"
       >
         <span class="status" :class="period.status">
           {{ period.status === 'closing_soon' ? 'Closing Soon' : 'Open' }}
         </span>
         <h2>{{ period.name }}</h2>
         <p>{{ formatDate(period.startDate) }} - {{ formatDate(period.endDate) }}</p>
-      </button>
+      </article>
     </section>
 
-    <p v-if="selectedPeriod" class="picked">
-      Selected period: <strong>{{ selectedPeriod.name }}</strong>
+    <p v-if="selectedPeriodId === null" class="hint">
+      No period selected yet. <RouterLink to="/">Go back and choose one</RouterLink>.
     </p>
   </main>
 </template>
 
 <style scoped>
-.periods-page {
+.review-page {
   display: grid;
   gap: 1rem;
 }
@@ -110,21 +101,12 @@ const onSelectPeriod = async (id: number) => {
   background: linear-gradient(180deg, #ffffff 0%, #f4f7fa 100%);
   text-align: left;
   padding: 1rem;
-  cursor: pointer;
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease,
-    border-color 0.2s ease;
-}
-
-.period-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 22px rgba(19, 43, 63, 0.08);
 }
 
 .period-card.selected {
   border-color: #13795b;
   box-shadow: 0 0 0 2px rgba(19, 121, 91, 0.18);
+  background: linear-gradient(180deg, #f8fffb 0%, #edf8f3 100%);
 }
 
 .period-card h2 {
@@ -158,9 +140,8 @@ const onSelectPeriod = async (id: number) => {
   border-color: #ffd8b7;
 }
 
-.picked {
+.hint {
   margin: 0;
-  font-size: 0.98rem;
-  color: #102e22;
+  color: #465766;
 }
 </style>

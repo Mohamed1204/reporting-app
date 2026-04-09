@@ -14,7 +14,8 @@ public class VatReportingContext : DbContext
     public DbSet<ReportingPeriod> ReportingPeriods { get; set; }
     public DbSet<VatReport> VatReports { get; set; }
     public DbSet<SalesEntry> SalesEntries { get; set; }
-    
+    public DbSet<Product> Products { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -76,6 +77,24 @@ public class VatReportingContext : DbContext
                 .WithMany(vr => vr.SalesEntries)
                 .HasForeignKey(e => e.VatReportId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Product>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Category).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Price).IsRequired().HasPrecision(18, 2);
+
+            entity.HasIndex(e => e.Name).IsUnique();
+
+            entity.HasData(
+                new Product { Id = 1, Name = "Laptop", Category = "Electronics", Price = 999.99m },
+                new Product { Id = 2, Name = "Desk Chair", Category = "Furniture", Price = 249.99m },
+                new Product { Id = 3, Name = "Notebook", Category = "Stationery", Price = 4.99m },
+                new Product { Id = 4, Name = "Monitor", Category = "Electronics", Price = 399.99m },
+                new Product { Id = 5, Name = "Standing Desk", Category = "Furniture", Price = 599.99m }
+            );
         });
     }
 }

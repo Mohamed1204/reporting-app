@@ -7,7 +7,7 @@ namespace ReportingApi1.Services;
 
 public interface ICompanyService
 {
-    Task<List<CompanyDto>> GetAllAsync();
+    Task<List<CompanyDto>> GetAllAsync(string? name);
     Task<CompanyDto?> GetByIdAsync(int id);
     Task<CompanyDto> CreateAsync(CreateCompanyDto dto);
     Task<bool> UpdateAsync(int id, UpdateCompanyDto dto);
@@ -23,15 +23,20 @@ public class CompanyService : ICompanyService
         _context = context;
     }
 
-    public async Task<List<CompanyDto>> GetAllAsync()
+    public async Task<List<CompanyDto>> GetAllAsync(string? name = null)
     {
-        return await _context.Companies
+        var query = _context.Companies.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(name))
+            query = query.Where(c => c.Name.Contains(name));
+
+        return await query
             .Select(c => new CompanyDto
             {
                 Id = c.Id,
                 Name = c.Name,
                 Country = c.Country
-            })
+                })
             .ToListAsync();
     }
 

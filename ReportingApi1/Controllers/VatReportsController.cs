@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ReportingApi1.DTOs;
+using ReportingApi1.Entities;
 using ReportingApi1.Services;
 
 namespace ReportingApi1.Controllers;
@@ -17,9 +18,11 @@ public class VatReportsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<VatReportDto>>> GetAll()
+    public async Task<ActionResult<List<VatReportDto>>> GetAll(
+        [FromQuery] int? companyId = null,
+        [FromQuery] ReportStatus? status = null)
     {
-        var reports = await _vatReportService.GetAllAsync();
+        var reports = await _vatReportService.GetAllAsync(companyId, status);
         return Ok(reports);
     }
 
@@ -31,13 +34,6 @@ public class VatReportsController : ControllerBase
             return NotFound();
 
         return Ok(report);
-    }
-
-    [HttpGet("company/{companyId}")]
-    public async Task<ActionResult<List<VatReportDto>>> GetByCompany(int companyId)
-    {
-        var reports = await _vatReportService.GetByCompanyAsync(companyId);
-        return Ok(reports);
     }
 
     [HttpPost]

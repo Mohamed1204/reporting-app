@@ -7,7 +7,7 @@ namespace ReportingApi1.Services;
 
 public interface IVatReportService
 {
-    Task<List<VatReportDto>> GetAllAsync();
+    Task<List<VatReportDto>> GetAllAsync(int? companyId = null, ReportStatus? status = null);
     Task<VatReportDto?> GetByIdAsync(int id);
     Task<List<VatReportDto>> GetByCompanyAsync(int companyId);
     Task<VatReportDto> CreateAsync(CreateVatReportDto dto);
@@ -24,14 +24,21 @@ public class VatReportService : IVatReportService
         _context = context;
     }
 
-    public async Task<List<VatReportDto>> GetAllAsync()
+    public async Task<List<VatReportDto>> GetAllAsync(int? companyId = null, ReportStatus? status = null)
     {
-        return await _context.VatReports
+        var query = _context.VatReports
             .Include(vr => vr.Company)
             .Include(vr => vr.ReportingPeriod)
             .Include(vr => vr.SalesEntries)
-            .Select(vr => MapToDto(vr))
-            .ToListAsync();
+            .AsQueryable();
+
+        if (companyId.HasValue)
+            query = query.Where(vr => vr.CompanyId == companyId.Value);
+
+        if (status.HasValue)
+            query = query.Where(vr => vr.Status == status.Value);
+
+        return await query.Select(vr => MapToDto(vr)).ToListAsync();
     }
 
     public async Task<VatReportDto?> GetByIdAsync(int id)

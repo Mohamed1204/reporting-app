@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
+import { usePeriodsStore } from '../stores/periods'
+import { pinia } from '../stores'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -10,6 +12,11 @@ const router = createRouter({
       component: HomeView,
     },
     {
+      path: '/periods/review',
+      name: 'period-review',
+      component: () => import('../views/PeriodReviewView.vue'),
+    },
+    {
       path: '/about',
       name: 'about',
       // route level code-splitting
@@ -18,6 +25,20 @@ const router = createRouter({
       component: () => import('../views/AboutView.vue'),
     },
   ],
+})
+
+router.beforeEach((to) => {
+  if (to.name !== 'period-review') {
+    return true
+  }
+
+  const periodsStore = usePeriodsStore(pinia)
+
+  if (!periodsStore.hasSelectedPeriod) {
+    return { name: 'home' }
+  }
+
+  return true
 })
 
 export default router

@@ -12,6 +12,7 @@ builder.Services.AddDbContext<VatReportingContext>(options =>
 builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IVatReportService, VatReportService>();
 builder.Services.AddScoped<IReportingPeriodService, ReportingPeriodService>();
+builder.Services.AddScoped<IProductService, ProductService>();
 
 // Configure CORS for Vue frontend
 builder.Services.AddCors(options =>
