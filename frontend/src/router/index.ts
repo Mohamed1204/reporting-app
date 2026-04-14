@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/HomeView.vue'
 import { usePeriodsStore } from '../stores/periods'
+import { useAuthStore } from '../stores/auth'
 import { pinia } from '../stores'
 
 const router = createRouter({
@@ -17,28 +18,27 @@ const router = createRouter({
       component: () => import('../views/PeriodReviewView.vue'),
     },
     {
-      path: '/about',
-      name: 'about',
-      // route level code-splitting
-      // this generates a separate chunk (About.[hash].js) for this route
-      // which is lazy-loaded when the route is visited.
-      component: () => import('../views/AboutView.vue'),
+      path: '/auth',
+      name: 'auth',
+      component: () => import('../views/LoginRegisterView.vue'),
     },
   ],
 })
 
 router.beforeEach((to) => {
-  if (to.name !== 'period-review') {
-    return true
+  if (to.name === 'auth') return true
+
+  const authStore = useAuthStore(pinia)
+  if (!authStore.isLoggedIn) {
+    return { name: 'auth' }
   }
 
-  const periodsStore = usePeriodsStore(pinia)
-
-  if (!periodsStore.hasSelectedPeriod) {
-    return { name: 'home' }
+  if (to.name === 'period-review') {
+    const periodsStore = usePeriodsStore(pinia)
+    if (!periodsStore.hasSelectedPeriod) {
+      return { name: 'home' }
+    }
   }
-
-  return true
 })
 
 export default router

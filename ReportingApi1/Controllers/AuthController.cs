@@ -19,11 +19,10 @@ namespace ReportingApi1.Controllers
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            var user = await _authService.LoginAsync(loginUserDto);
-            if (user == null) return Unauthorized();
+            var token = await _authService.LoginAsync(loginUserDto);
+            if (token == null) return Unauthorized();
 
-            // TODO: return token instead of user info in production
-            return Ok(new { user.Id, user.UserName, user.CompanyId });
+            return Ok(new { token });
         }
 
         [HttpPost("register")]

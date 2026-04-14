@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ReportingApi1.DTOs;
@@ -17,6 +18,7 @@ public class VatReportsController : ControllerBase
         _vatReportService = vatReportService;
     }
 
+    [Authorize]
     [HttpGet]
     public async Task<ActionResult<List<VatReportDto>>> GetAll(
         [FromQuery] int? companyId = null,

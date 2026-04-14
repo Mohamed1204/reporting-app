@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { useFetch } from '@vueuse/core'
+import { useApiFetch, apiFetch } from '../composables/useApiFetch'
 import { storeToRefs } from 'pinia'
 import {
+  API_BASE,
   VAT_REPORTS_ENDPOINT,
   mapVatReportsToOpenPeriods,
   usePeriodsStore,
@@ -11,8 +12,8 @@ import {
   type VatReport,
 } from '../stores/periods'
 
-const SAVE_VAT_REPORT_ENDPOINT = new URL('/api/VatReports/save', VAT_REPORTS_ENDPOINT).toString()
-const SUBMIT_VAT_REPORT_ENDPOINT = new URL('/api/VatReports', VAT_REPORTS_ENDPOINT).toString()
+const SAVE_ENDPOINT = `${API_BASE}/api/VatReports/save`
+const SUBMIT_ENDPOINT = `${API_BASE}/api/VatReports`
 
 interface SaveVatReportRequest {
   companyId: number
@@ -29,7 +30,7 @@ interface SaveVatReportRequest {
 const periodsStore = usePeriodsStore()
 const { selectedPeriodId } = storeToRefs(periodsStore)
 
-const { data, error, isFetching } = useFetch(VAT_REPORTS_ENDPOINT).json<VatReport[]>()
+const { data, error, isFetching } = useApiFetch<VatReport[]>(VAT_REPORTS_ENDPOINT)
 
 const periods = computed(() => mapVatReportsToOpenPeriods(data.value ?? []))
 
@@ -225,11 +226,8 @@ const onSaveDraft = async () => {
   isSavingDraft.value = true
 
   try {
-    const response = await fetch(SAVE_VAT_REPORT_ENDPOINT, {
+    const response = await apiFetch(SAVE_ENDPOINT, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(payload),
     })
 
@@ -282,11 +280,8 @@ const onSubmitReport = async () => {
   isSubmittingReport.value = true
 
   try {
-    const response = await fetch(SUBMIT_VAT_REPORT_ENDPOINT, {
+    const response = await apiFetch(SUBMIT_ENDPOINT, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(payload),
     })
 

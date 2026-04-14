@@ -1,14 +1,22 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { RouterLink, RouterView, useRouter } from 'vue-router'
+import { useAuthStore } from './stores/auth'
+
+const router = useRouter()
+const authStore = useAuthStore()
+
+function handleLogout() {
+  authStore.logout()
+  router.push('/auth')
+}
 </script>
 
 <template>
   <div class="app-shell">
     <nav>
       <RouterLink to="/">Open Periods</RouterLink>
-      <RouterLink to="/about">About</RouterLink>
+      <button v-if="authStore.isLoggedIn" @click="handleLogout" style="margin-left: auto">Logout</button>
     </nav>
-
     <RouterView />
   </div>
 </template>

@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useFetch } from '@vueuse/core'
+import { useApiFetch } from '../composables/useApiFetch'
 import { storeToRefs } from 'pinia'
 import {
   VAT_REPORTS_ENDPOINT,
@@ -19,7 +19,7 @@ onMounted(() => {
   periodsStore.clearSelection()
 })
 
-const { data, error, isFetching } = useFetch(VAT_REPORTS_ENDPOINT).json<VatReport[]>()
+const { data, error, isFetching } = useApiFetch<VatReport[]>(VAT_REPORTS_ENDPOINT)
 
 const periods = computed(() => mapVatReportsToOpenPeriods(data.value ?? []))
 
