@@ -50,12 +50,12 @@ public class VatReportsController : ControllerBase
         }
     }
 
-    [HttpPut("{id}")]
-    public async Task<IActionResult> Update(int id, UpdateVatReportDto dto)
+    [HttpPut]
+    public async Task<IActionResult> Update(UpdateVatReportDto dto)
     {
         try
         {
-            var result = await _vatReportService.UpdateAsync(id, dto);
+            var result = await _vatReportService.UpdateAsync(dto);
             if (!result)
                 return NotFound();
 
@@ -75,5 +75,19 @@ public class VatReportsController : ControllerBase
             return NotFound();
 
         return NoContent();
+    }
+
+    [HttpPost("save")]
+    public async Task<ActionResult<VatReportDto>> Save(UpdateVatReportDto dto)
+    {
+        try
+        {
+            var report = await _vatReportService.SaveAsync(dto);
+            return CreatedAtAction(nameof(GetById), new { id = report.Id }, report);
+        }
+        catch (DbUpdateException ex)
+        {
+            return BadRequest(new { error = "A VAT report already exists for this company and reporting period.", details = ex.Message });
+        }
     }
 }

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ReportingApi1.Data;
 
@@ -11,9 +12,11 @@ using ReportingApi1.Data;
 namespace ReportingApi1.Migrations
 {
     [DbContext(typeof(VatReportingContext))]
-    partial class VatReportingContextModelSnapshot : ModelSnapshot
+    [Migration("20260413113418_AddUniqueCountryPerVatReport")]
+    partial class AddUniqueCountryPerVatReport
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -188,37 +191,6 @@ namespace ReportingApi1.Migrations
                     b.ToTable("SalesEntries");
                 });
 
-            modelBuilder.Entity("ReportingApi1.Entities.User", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("CompanyId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("PasswordHash")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<string>("UserName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompanyId");
-
-                    b.HasIndex("UserName")
-                        .IsUnique();
-
-                    b.ToTable("Users");
-                });
-
             modelBuilder.Entity("ReportingApi1.Entities.VatReport", b =>
                 {
                     b.Property<int>("Id")
@@ -264,17 +236,6 @@ namespace ReportingApi1.Migrations
                         .IsRequired();
 
                     b.Navigation("VatReport");
-                });
-
-            modelBuilder.Entity("ReportingApi1.Entities.User", b =>
-                {
-                    b.HasOne("ReportingApi1.Entities.Company", "Company")
-                        .WithMany()
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Company");
                 });
 
             modelBuilder.Entity("ReportingApi1.Entities.VatReport", b =>

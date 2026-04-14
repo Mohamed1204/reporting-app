@@ -23,6 +23,18 @@ namespace ReportingApi1.Controllers
             var products = await _productService.GetAllAsync();
             return Ok(products);
         }
+
+
+        [HttpGet("{id}")]
+        public async Task<ActionResult<ProductDto>> GetById(int id)
+        {
+            // Placeholder for actual product retrieval logic
+            var product = await _productService.GetByIdAsync(id);
+            if(product == null) {
+                return NotFound();
+            }
+            return Ok(product);
+        }
     }
 }
 

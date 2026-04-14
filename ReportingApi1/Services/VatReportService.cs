@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ReportingApi1.Data;
 using ReportingApi1.DTOs;
 using ReportingApi1.Entities;
+using ReportingApi1.Validation;
 
 namespace ReportingApi1.Services;
 
@@ -11,8 +12,9 @@ public interface IVatReportService
     Task<VatReportDto?> GetByIdAsync(int id);
     Task<List<VatReportDto>> GetByCompanyAsync(int companyId);
     Task<VatReportDto> CreateAsync(CreateVatReportDto dto);
-    Task<bool> UpdateAsync(int id, UpdateVatReportDto dto);
+    Task<bool> UpdateAsync(UpdateVatReportDto dto);
     Task<bool> DeleteAsync(int id);
+    Task<VatReportDto> SaveAsync(UpdateVatReportDto dto);
 }
 
 public class VatReportService : IVatReportService
@@ -73,7 +75,7 @@ public class VatReportService : IVatReportService
             Status = ReportStatus.Draft,
             SalesEntries = dto.SalesEntries.Select(se => new SalesEntry
             {
-                Country = se.Country,
+                Country = CountryCodes.Normalize(se.Country),
                 Amount = se.Amount,
                 VatRate = se.VatRate
             }).ToList()
@@ -85,22 +87,23 @@ public class VatReportService : IVatReportService
         return (await GetByIdAsync(vatReport.Id))!;
     }
 
-    public async Task<bool> UpdateAsync(int id, UpdateVatReportDto dto)
+    public async Task<bool> UpdateAsync(UpdateVatReportDto dto)
     {
         var vatReport = await _context.VatReports
             .Include(vr => vr.SalesEntries)
-            .FirstOrDefaultAsync(vr => vr.Id == id);
+            .FirstOrDefaultAsync(vr => vr.CompanyId == dto.CompanyId
+                                    && vr.ReportingPeriodId == dto.ReportingPeriodId);
 
         if (vatReport == null) return false;
 
-        vatReport.Status = dto.Status;
+        vatReport.Status = ReportStatus.Submitted;
         
         _context.SalesEntries.RemoveRange(vatReport.SalesEntries);
         
         vatReport.SalesEntries = dto.SalesEntries.Select(se => new SalesEntry
         {
-            VatReportId = id,
-            Country = se.Country,
+            VatReportId = vatReport.Id,
+            Country = CountryCodes.Normalize(se.Country),
             Amount = se.Amount,
             VatRate = se.VatRate
         }).ToList();
@@ -126,6 +129,31 @@ public class VatReportService : IVatReportService
         _context.VatReports.Remove(vatReport);
         await _context.SaveChangesAsync();
         return true;
+    }
+
+    public async Task<VatReportDto> SaveAsync(UpdateVatReportDto dto)
+    {
+        var vatReport = await _context.VatReports
+            .Include(vr => vr.SalesEntries)
+            .FirstOrDefaultAsync(vr => vr.CompanyId == dto.CompanyId
+                                    && vr.ReportingPeriodId == dto.ReportingPeriodId);
+
+        if (vatReport == null) return null!;
+        if (vatReport.Status == ReportStatus.Submitted) return null!;
+
+        _context.SalesEntries.RemoveRange(vatReport.SalesEntries);
+
+        vatReport.SalesEntries = dto.SalesEntries.Select(se => new SalesEntry
+        {
+            VatReportId = vatReport.Id,
+            Country = CountryCodes.Normalize(se.Country),
+            Amount = se.Amount,
+            VatRate = se.VatRate
+        }).ToList();
+
+        vatReport.Status = ReportStatus.Draft;
+        await _context.SaveChangesAsync();
+        return (await GetByIdAsync(vatReport.Id))!;
     }
 
     private static VatReportDto MapToDto(VatReport vatReport)
