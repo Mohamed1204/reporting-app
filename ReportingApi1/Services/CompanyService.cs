@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ReportingApi1.Data;
 using ReportingApi1.DTOs;
 using ReportingApi1.Entities;
+using ReportingApi1.Exceptions;
 
 namespace ReportingApi1.Services;
 
@@ -10,8 +11,8 @@ public interface ICompanyService
     Task<List<CompanyDto>> GetAllAsync(string? name);
     Task<CompanyDto?> GetByIdAsync(int id);
     Task<CompanyDto> CreateAsync(CreateCompanyDto dto);
-    Task<bool> UpdateAsync(int id, UpdateCompanyDto dto);
-    Task<bool> DeleteAsync(int id);
+    Task UpdateAsync(int id, UpdateCompanyDto dto);
+    Task DeleteAsync(int id);
 }
 
 public class CompanyService : ICompanyService
@@ -36,7 +37,7 @@ public class CompanyService : ICompanyService
                 Id = c.Id,
                 Name = c.Name,
                 Country = c.Country
-                })
+            })
             .ToListAsync();
     }
 
@@ -72,34 +73,27 @@ public class CompanyService : ICompanyService
         };
     }
 
-    public async Task<bool> UpdateAsync(int id, UpdateCompanyDto dto)
+    public async Task UpdateAsync(int id, UpdateCompanyDto dto)
     {
         var company = await _context.Companies.FindAsync(id);
-        if (company == null) return false;
+        if (company == null) throw new NotFoundException($"Company {id} not found");
 
         company.Name = dto.Name;
         company.Country = dto.Country;
-        
+
         _context.Entry(company).Property(c => c.RowVersion).OriginalValue = dto.RowVersion;
 
-        try
-        {
-            await _context.SaveChangesAsync();
-            return true;
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            throw;
-        }
+
+        await _context.SaveChangesAsync();
+
     }
 
-    public async Task<bool> DeleteAsync(int id)
+    public async Task DeleteAsync(int id)
     {
         var company = await _context.Companies.FindAsync(id);
-        if (company == null) return false;
+        if (company == null) throw new NotFoundException($"Company {id} not found");
 
         _context.Companies.Remove(company);
         await _context.SaveChangesAsync();
-        return true;
     }
 }

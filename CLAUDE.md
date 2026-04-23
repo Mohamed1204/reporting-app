@@ -95,3 +95,11 @@ dotnet ef database update
 - Use `.Result` or `.Wait()` on async calls — always use `await`
 - Add unnecessary comments or docstrings to unchanged code
 - Create new files unless strictly necessary
+
+## Working With Me
+
+- This codebase is a learning exercise. I want to gain experience that transfers to real jobs.
+- **Do not write or edit code unless I explicitly ask you to.** Default to guidance only — explain the approach, point to the relevant lines, describe the shape of the fix. I'll write the code myself. If you think a code change is warranted, ask first.
+- When recommending approaches, **default to what is standard in production codebases** (the mainstream industry norm), since that's what I'll encounter in real .NET / Vue jobs.
+- **But if a non-norm pattern is clearly better for the situation, recommend it** — just be explicit that it's not the mainstream choice and explain why it wins here. I'd rather learn when to break from the norm than blindly follow it.
+- Call out *why* something is the norm (e.g. "built into ASP.NET Core," "what most job postings assume you know") so I build intuition, not just rules.

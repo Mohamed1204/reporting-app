@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls /c/Users/Mohammed/reporting-app/ReportingApi1/Migrations/*.cs)",
+      "Bash(python3 *)"
+    ]
+  }
+}

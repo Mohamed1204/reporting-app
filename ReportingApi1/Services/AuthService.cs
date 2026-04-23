@@ -1,18 +1,18 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using ReportingApi1.Data;
 using ReportingApi1.DTOs;
 using ReportingApi1.Entities;
+using ReportingApi1.Exceptions;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using BCrypt.Net;
 
 namespace ReportingApi1.Services
 {
     public interface IAuthService
     {
-        Task<bool> RegisterAsync(RegisterUserDto dto);
+        Task RegisterAsync(RegisterUserDto dto);
         Task<String?> LoginAsync(LoginUserDto dto);
     }
 
@@ -20,23 +20,31 @@ namespace ReportingApi1.Services
     {
         private readonly VatReportingContext _context;
         private readonly IConfiguration _config;
+        private readonly ILogger<AuthService> _logger;
 
-        public AuthService(VatReportingContext context, IConfiguration config)
+        public AuthService(VatReportingContext context, IConfiguration config, ILogger<AuthService> logger)
         {
             _context = context;
             _config = config;
+            _logger = logger;
         }
 
-        public async Task<bool> RegisterAsync(RegisterUserDto dto)
+        public async Task RegisterAsync(RegisterUserDto dto)
         {
             // username must be unique
             if (await _context.Users.AnyAsync(u => u.UserName == dto.UserName))
-                return false;
+            {
+                _logger.LogInformation("Registration failed: Username {UserName} already exists", dto.UserName);
+                throw new BadRequestException("Registration Failed");
+            }
+          
 
             // company must exist
             var company = await _context.Companies.FindAsync(dto.CompanyId);
-            if (company == null) return false;
-
+            if (company == null) {
+                _logger.LogInformation("Registration failed: Company with ID {CompanyId} not found", dto.CompanyId);
+                throw new BadRequestException("Registration Failed");
+            } 
             var user = new User
             {
                 UserName = dto.UserName,
@@ -46,7 +54,7 @@ namespace ReportingApi1.Services
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
-            return true;
+            _logger.LogInformation("Register succeeded: user {UserName} created for company {CompanyId}", dto.UserName, dto.CompanyId);
         }
 
         public async Task<String?> LoginAsync(LoginUserDto dto)
@@ -73,7 +81,8 @@ namespace ReportingApi1.Services
             {
                 new Claim("userId", user.Id.ToString()),
                 new Claim("userName", user.UserName),
-                new Claim("companyId", user.CompanyId.ToString())
+                new Claim("companyId", user.CompanyId.ToString()),
+                new Claim(ClaimTypes.Role, user.Role.ToString())
             };
 
             var token = new JwtSecurityToken(

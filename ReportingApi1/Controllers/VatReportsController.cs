@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using ReportingApi1.DTOs;
 using ReportingApi1.Entities;
 using ReportingApi1.Services;
@@ -12,19 +11,23 @@ namespace ReportingApi1.Controllers;
 public class VatReportsController : ControllerBase
 {
     private readonly IVatReportService _vatReportService;
+    private readonly ICurrentUserService _currentUserService;
 
-    public VatReportsController(IVatReportService vatReportService)
+    public VatReportsController(IVatReportService vatReportService, ICurrentUserService currentUserService)
     {
         _vatReportService = vatReportService;
+        _currentUserService = currentUserService;
     }
 
-    [Authorize]
     [HttpGet]
-    public async Task<ActionResult<List<VatReportDto>>> GetAll(
-        [FromQuery] int? companyId = null,
-        [FromQuery] ReportStatus? status = null)
+    public async Task<ActionResult<List<VatReportDto>>> GetAll([FromQuery] int? companyId = null,
+      [FromQuery] ReportStatus? status = null)
     {
-        var reports = await _vatReportService.GetAllAsync(companyId, status);
+        var effectiveCompanyId = _currentUserService.IsAdmin
+            ? companyId
+            : _currentUserService.CompanyId;
+
+        var reports = await _vatReportService.GetAllAsync(effectiveCompanyId, status);
         return Ok(reports);
     }
 
@@ -39,57 +42,40 @@ public class VatReportsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = nameof(UserRole.Admin))]
     public async Task<ActionResult<VatReportDto>> Create(CreateVatReportDto dto)
     {
-        try
-        {
-            var report = await _vatReportService.CreateAsync(dto);
-            return CreatedAtAction(nameof(GetById), new { id = report.Id }, report);
-        }
-        catch (DbUpdateException ex)
-        {
-            return BadRequest(new { error = "A VAT report already exists for this company and reporting period.", details = ex.Message });
-        }
+        var report = await _vatReportService.CreateAsync(dto);
+        return CreatedAtAction(nameof(GetById), new { id = report.Id }, report);
     }
 
     [HttpPut]
+    [Authorize(Roles = nameof(UserRole.Admin))]
     public async Task<IActionResult> Update(UpdateVatReportDto dto)
     {
-        try
-        {
-            var result = await _vatReportService.UpdateAsync(dto);
-            if (!result)
-                return NotFound();
-
-            return NoContent();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            return Conflict(new { error = "The VAT report was modified by another user. Please refresh and try again." });
-        }
+        await _vatReportService.UpdateAsync(dto);
+        return NoContent();
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Roles = nameof(UserRole.Admin))]
     public async Task<IActionResult> Delete(int id)
     {
-        var result = await _vatReportService.DeleteAsync(id);
-        if (!result)
-            return NotFound();
-
+        await _vatReportService.DeleteAsync(id);
         return NoContent();
     }
 
     [HttpPost("save")]
     public async Task<ActionResult<VatReportDto>> Save(UpdateVatReportDto dto)
     {
-        try
-        {
-            var report = await _vatReportService.SaveAsync(dto);
-            return CreatedAtAction(nameof(GetById), new { id = report.Id }, report);
-        }
-        catch (DbUpdateException ex)
-        {
-            return BadRequest(new { error = "A VAT report already exists for this company and reporting period.", details = ex.Message });
-        }
+        var report = await _vatReportService.SaveAsync(dto);
+        return CreatedAtAction(nameof(GetById), new { id = report.Id }, report);
     }
+
+    [HttpPost("submit")]
+    public async Task<ActionResult<VatReportDto>> Submit(UpdateVatReportDto dto)
+    {
+        var report = await _vatReportService.SubmitAsync(dto);
+        return Ok(report);
+    } 
 }

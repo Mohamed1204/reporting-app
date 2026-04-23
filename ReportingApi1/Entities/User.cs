@@ -1,4 +1,4 @@
-﻿namespace ReportingApi1.Entities
+namespace ReportingApi1.Entities
 {
     public class User
     {
@@ -7,5 +7,14 @@
         public string PasswordHash { get; set; } = string.Empty;
         public int CompanyId { get; set; }
         public Company Company { get; set; } = null!;
+        public UserRole Role { get; set; } = UserRole.User;
+
+    }
+
+    public enum UserRole
+    {
+        User,
+        Admin,
     }
 }
+

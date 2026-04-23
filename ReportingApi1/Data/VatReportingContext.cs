@@ -90,7 +90,7 @@ public class VatReportingContext : DbContext
             entity.Property(e => e.Price).IsRequired().HasPrecision(18, 2);
 
             entity.HasIndex(e => e.Name).IsUnique();
-
+            
             entity.HasData(
                 new Product { Id = 1, Name = "Laptop", Category = "Electronics", Price = 999.99m },
                 new Product { Id = 2, Name = "Desk Chair", Category = "Furniture", Price = 249.99m },
@@ -105,6 +105,7 @@ public class VatReportingContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.UserName).IsRequired().HasMaxLength(100);
             entity.Property(e => e.PasswordHash).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.Role).IsRequired().HasDefaultValue(UserRole.User);
             entity.HasIndex(e => e.UserName).IsUnique();
             entity.HasOne(e => e.Company)
                 .WithMany()

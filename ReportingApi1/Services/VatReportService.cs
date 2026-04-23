@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using ReportingApi1.Data;
 using ReportingApi1.DTOs;
 using ReportingApi1.Entities;
+using ReportingApi1.Exceptions;
 using ReportingApi1.Validation;
 
 namespace ReportingApi1.Services;
@@ -12,18 +13,21 @@ public interface IVatReportService
     Task<VatReportDto?> GetByIdAsync(int id);
     Task<List<VatReportDto>> GetByCompanyAsync(int companyId);
     Task<VatReportDto> CreateAsync(CreateVatReportDto dto);
-    Task<bool> UpdateAsync(UpdateVatReportDto dto);
-    Task<bool> DeleteAsync(int id);
+    Task UpdateAsync(UpdateVatReportDto dto);
+    Task DeleteAsync(int id);
     Task<VatReportDto> SaveAsync(UpdateVatReportDto dto);
+    Task<VatReportDto> SubmitAsync(UpdateVatReportDto dto);
 }
 
 public class VatReportService : IVatReportService
 {
     private readonly VatReportingContext _context;
+    private readonly ICurrentUserService _currentUserService;
 
-    public VatReportService(VatReportingContext context)
+    public VatReportService(VatReportingContext context, ICurrentUserService currentUserService)
     {
         _context = context;
+        _currentUserService = currentUserService;
     }
 
     public async Task<List<VatReportDto>> GetAllAsync(int? companyId = null, ReportStatus? status = null)
@@ -67,11 +71,16 @@ public class VatReportService : IVatReportService
 
     public async Task<VatReportDto> CreateAsync(CreateVatReportDto dto)
     {
+        var exists = await _context.VatReports.AnyAsync(vr =>
+            vr.CompanyId == dto.CompanyId && vr.ReportingPeriodId == dto.ReportingPeriodId);
+
+        if (exists)
+            throw new ConflictException($"A VAT report already exists for company {dto.CompanyId} and period {dto.ReportingPeriodId}.");
+
         var vatReport = new VatReport
         {
             CompanyId = dto.CompanyId,
             ReportingPeriodId = dto.ReportingPeriodId,
-            SubmittedAt = DateTime.UtcNow,
             Status = ReportStatus.Draft,
             SalesEntries = dto.SalesEntries.Select(se => new SalesEntry
             {
@@ -87,19 +96,18 @@ public class VatReportService : IVatReportService
         return (await GetByIdAsync(vatReport.Id))!;
     }
 
-    public async Task<bool> UpdateAsync(UpdateVatReportDto dto)
+    public async Task UpdateAsync(UpdateVatReportDto dto)
     {
         var vatReport = await _context.VatReports
             .Include(vr => vr.SalesEntries)
             .FirstOrDefaultAsync(vr => vr.CompanyId == dto.CompanyId
                                     && vr.ReportingPeriodId == dto.ReportingPeriodId);
 
-        if (vatReport == null) return false;
+        if (vatReport == null)
+            throw new NotFoundException($"No VAT report found for company {dto.CompanyId} and period {dto.ReportingPeriodId}.");
 
-        vatReport.Status = ReportStatus.Submitted;
-        
         _context.SalesEntries.RemoveRange(vatReport.SalesEntries);
-        
+
         vatReport.SalesEntries = dto.SalesEntries.Select(se => new SalesEntry
         {
             VatReportId = vatReport.Id,
@@ -110,36 +118,68 @@ public class VatReportService : IVatReportService
 
         _context.Entry(vatReport).Property(vr => vr.RowVersion).OriginalValue = dto.RowVersion;
 
-        try
-        {
-            await _context.SaveChangesAsync();
-            return true;
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            throw;
-        }
+        await _context.SaveChangesAsync();
     }
 
-    public async Task<bool> DeleteAsync(int id)
+    public async Task DeleteAsync(int id)
     {
         var vatReport = await _context.VatReports.FindAsync(id);
-        if (vatReport == null) return false;
+        if (vatReport == null)
+            throw new NotFoundException($"VAT report {id} not found.");
 
         _context.VatReports.Remove(vatReport);
         await _context.SaveChangesAsync();
-        return true;
     }
+
+    public async Task<VatReportDto> SubmitAsync(UpdateVatReportDto dto)
+    {
+        var companyId = _currentUserService.ResolveCompanyId(dto.CompanyId);
+
+        var vatReport = await _context.VatReports
+            .Include(vr => vr.SalesEntries)
+            .FirstOrDefaultAsync(vr => vr.CompanyId == companyId
+                                    && vr.ReportingPeriodId == dto.ReportingPeriodId);
+
+        if (vatReport == null)
+            throw new NotFoundException($"No VAT report found for company {companyId} and period {dto.ReportingPeriodId}.");
+
+        if (vatReport.Status != ReportStatus.Draft && vatReport.Status != ReportStatus.Rejected)
+            throw new ConflictException("Only Draft or Rejected reports can be submitted.");
+
+        _context.SalesEntries.RemoveRange(vatReport.SalesEntries);
+
+        vatReport.Status = ReportStatus.Submitted;
+        vatReport.SubmittedAt = DateTime.UtcNow;
+        vatReport.SalesEntries = dto.SalesEntries.Select(se => new SalesEntry
+        {
+            Country = CountryCodes.Normalize(se.Country),
+            Amount = se.Amount,
+            VatRate = se.VatRate
+        }).ToList();
+
+
+        _context.Entry(vatReport).Property(vr => vr.RowVersion).OriginalValue = dto.RowVersion;
+
+        await _context.SaveChangesAsync();
+        return (await GetByIdAsync(vatReport.Id))!;
+    }
+
+
 
     public async Task<VatReportDto> SaveAsync(UpdateVatReportDto dto)
     {
+        var companyId = _currentUserService.ResolveCompanyId(dto.CompanyId);
+
         var vatReport = await _context.VatReports
             .Include(vr => vr.SalesEntries)
-            .FirstOrDefaultAsync(vr => vr.CompanyId == dto.CompanyId
+            .FirstOrDefaultAsync(vr => vr.CompanyId == companyId
                                     && vr.ReportingPeriodId == dto.ReportingPeriodId);
 
-        if (vatReport == null) return null!;
-        if (vatReport.Status == ReportStatus.Submitted) return null!;
+        if (vatReport == null)
+            throw new NotFoundException($"No VAT report found for company {companyId} and period {dto.ReportingPeriodId}.");
+
+        if (vatReport.Status == ReportStatus.Submitted)
+            throw new ConflictException("Cannot save a submitted report.");
 
         _context.SalesEntries.RemoveRange(vatReport.SalesEntries);
 

@@ -43,26 +43,17 @@ public class CompaniesController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, UpdateCompanyDto dto)
     {
-        try
-        {
-            var result = await _companyService.UpdateAsync(id, dto);
-            if (!result)
-                return NotFound();
 
-            return NoContent();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            return Conflict(new { error = "The company was modified by another user. Please refresh and try again." });
-        }
+        await _companyService.UpdateAsync(id, dto);
+        return NoContent();
+
+
     }
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var result = await _companyService.DeleteAsync(id);
-        if (!result)
-            return NotFound();
+        await _companyService.DeleteAsync(id);
 
         return NoContent();
     }

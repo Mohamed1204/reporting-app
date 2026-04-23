@@ -1,8 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using ReportingApi1.DTOs;
 using ReportingApi1.Services;
 namespace ReportingApi1.Controllers
 {
+    [AllowAnonymous]
     [ApiController]
     [Route("api/[controller]")]
     public class AuthController : ControllerBase
@@ -17,10 +19,16 @@ namespace ReportingApi1.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginUserDto loginUserDto)
         {
-            if (!ModelState.IsValid) return BadRequest(ModelState);
 
             var token = await _authService.LoginAsync(loginUserDto);
-            if (token == null) return Unauthorized();
+            if (token == null)
+                return Unauthorized(new ProblemDetails
+                {
+                    Status = StatusCodes.Status401Unauthorized,
+                    Title = "Unauthorized",
+                    Detail = "Invalid credentials",
+                    Type = "https://httpstatuses.com/401"
+                });
 
             return Ok(new { token });
         }
@@ -28,12 +36,9 @@ namespace ReportingApi1.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterUserDto registerUserDto)
         {
-            if (!ModelState.IsValid) return BadRequest(ModelState);
+            await _authService.RegisterAsync(registerUserDto);
 
-            var created = await _authService.RegisterAsync(registerUserDto);
-            if (!created) return BadRequest("Unable to register user (username taken or invalid company)");
-
-            return Ok();
+            return Created();
         }
     }
 }
