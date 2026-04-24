@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(ls /c/Users/Mohammed/reporting-app/ReportingApi1/Migrations/*.cs)",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "Read(//c/Users/Mohammed/reporting-app/frontend/**)",
+      "Bash(npm run *)"
     ]
   }
 }

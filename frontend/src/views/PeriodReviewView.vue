@@ -239,7 +239,7 @@ const onSaveDraft = async () => {
     }
 
     const savedReport = (await response.json()) as VatReport
-    const currentReports = data.value ?? []
+    const currentReports = [...(data.value?.items ?? [])]
     const reportIndex = currentReports.findIndex((report) => report.id === savedReport.id)
 
     if (reportIndex >= 0) {
@@ -248,7 +248,9 @@ const onSaveDraft = async () => {
       currentReports.push(savedReport)
     }
 
-    data.value = [...currentReports]
+    if (data.value) {
+      data.value = { ...data.value, items: currentReports }
+    }
     salesEntries.value = savedReport.salesEntries.map((entry) => ({ ...entry }))
 
     actionMessageType.value = 'success'
@@ -294,7 +296,7 @@ const onSubmitReport = async () => {
 
     if (response.status !== 204) {
       const submittedReport = (await response.json()) as VatReport
-      const currentReports = data.value ?? []
+      const currentReports = [...(data.value?.items ?? [])]
       const reportIndex = currentReports.findIndex((report) => report.id === submittedReport.id)
 
       if (reportIndex >= 0) {
@@ -303,7 +305,9 @@ const onSubmitReport = async () => {
         currentReports.push(submittedReport)
       }
 
-      data.value = [...currentReports]
+      if (data.value) {
+        data.value = { ...data.value, items: currentReports }
+      }
       salesEntries.value = submittedReport.salesEntries.map((entry) => ({ ...entry }))
     }
 

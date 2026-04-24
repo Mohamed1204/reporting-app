@@ -20,14 +20,19 @@ public class VatReportsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<VatReportDto>>> GetAll([FromQuery] int page = 1, int pageSize = 20, int? companyId = null,
-      [FromQuery] ReportStatus? status = null)
+    public async Task<ActionResult<PagedResult<VatReportDto>>> GetAll(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] int? companyId = null,
+        [FromQuery] ReportStatus? status = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDir = null)
     {
         var effectiveCompanyId = _currentUserService.IsAdmin
             ? companyId
             : _currentUserService.CompanyId;
 
-        var reports = await _vatReportService.GetAllAsync(page, pageSize, effectiveCompanyId, status);
+        var reports = await _vatReportService.GetAllAsync(page, pageSize, effectiveCompanyId, status, sortBy, sortDir);
         return Ok(reports);
     }
 

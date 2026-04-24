@@ -9,7 +9,7 @@ namespace ReportingApi1.Services;
 
 public interface IVatReportService
 {
-    Task<PagedResult<VatReportDto>> GetAllAsync(int page, int pageSize, int? companyId = null, ReportStatus? status = null);
+    Task<PagedResult<VatReportDto>> GetAllAsync(int page, int pageSize, int? companyId = null, ReportStatus? status = null, string? sortBy = null, string? sortDir = null);
     Task<VatReportDto?> GetByIdAsync(int id);
     Task<List<VatReportDto>> GetByCompanyAsync(int companyId);
     Task<VatReportDto> CreateAsync(CreateVatReportDto dto);
@@ -30,14 +30,14 @@ public class VatReportService : IVatReportService
         _currentUserService = currentUserService;
     }
 
-    public async Task<PagedResult<VatReportDto>> GetAllAsync(int page, int pageSize, int? companyId = null, ReportStatus? status = null)
+    public async Task<PagedResult<VatReportDto>> GetAllAsync(int page, int pageSize, int? companyId = null, ReportStatus? status = null, string? sortBy = null, string? sortDir = null)
     {
         var query = _context.VatReports
             .Include(vr => vr.Company)
             .Include(vr => vr.ReportingPeriod)
             .Include(vr => vr.SalesEntries)
             .AsQueryable();
-            
+
 
         if (companyId.HasValue)
             query = query.Where(vr => vr.CompanyId == companyId.Value);
@@ -47,8 +47,9 @@ public class VatReportService : IVatReportService
 
         var totalCount = await query.CountAsync();
 
-        var items = await query
-         .OrderByDescending(vr => vr.Id)   // you MUST order before skip/take
+        var ordered = ApplySort(query, sortBy, sortDir);
+
+        var items = await ordered
          .Skip((page - 1) * pageSize)
          .Take(pageSize)
          .Select(vr => MapToDto(vr))
@@ -216,6 +217,22 @@ public class VatReportService : IVatReportService
 
         await _context.SaveChangesAsync();
         return (await GetByIdAsync(vatReport.Id))!;
+    }
+
+    private static IOrderedQueryable<VatReport> ApplySort(IQueryable<VatReport> query, string? sortBy, string? sortDir)
+    {
+        var desc = !string.Equals(sortDir, "asc", StringComparison.OrdinalIgnoreCase);
+
+        IOrderedQueryable<VatReport> primary = (sortBy?.ToLowerInvariant()) switch
+        {
+            "submittedat" => desc ? query.OrderByDescending(vr => vr.SubmittedAt) : query.OrderBy(vr => vr.SubmittedAt),
+            "companyname" => desc ? query.OrderByDescending(vr => vr.Company.Name) : query.OrderBy(vr => vr.Company.Name),
+            "status"      => desc ? query.OrderByDescending(vr => vr.Status)       : query.OrderBy(vr => vr.Status),
+            "startdate"   => desc ? query.OrderByDescending(vr => vr.ReportingPeriod.StartDate) : query.OrderBy(vr => vr.ReportingPeriod.StartDate),
+            _             => query.OrderByDescending(vr => vr.Id),
+        };
+
+        return primary.ThenBy(vr => vr.Id);
     }
 
     private static VatReportDto MapToDto(VatReport vatReport)

@@ -41,7 +41,33 @@ export interface PagedResult<T> {
 }
 
 export const API_BASE = 'https://localhost:7033'
-export const VAT_REPORTS_ENDPOINT = `${API_BASE}/api/VatReports?companyId=1&page=1&pageSize=50`
+
+export type VatReportSortField = 'submittedAt' | 'companyName' | 'status' | 'startDate'
+export type SortDirection = 'asc' | 'desc'
+
+export interface VatReportsQuery {
+  companyId?: number
+  page?: number
+  pageSize?: number
+  sortBy?: VatReportSortField
+  sortDir?: SortDirection
+}
+
+export const buildVatReportsEndpoint = (q: VatReportsQuery = {}): string => {
+  const params = new URLSearchParams()
+  if (q.companyId !== undefined) params.set('companyId', String(q.companyId))
+  params.set('page', String(q.page ?? 1))
+  params.set('pageSize', String(q.pageSize ?? 50))
+  if (q.sortBy) params.set('sortBy', q.sortBy)
+  if (q.sortDir) params.set('sortDir', q.sortDir)
+  return `${API_BASE}/api/VatReports?${params.toString()}`
+}
+
+export const VAT_REPORTS_ENDPOINT = buildVatReportsEndpoint({
+  companyId: 1,
+  sortBy: 'startDate',
+  sortDir: 'asc',
+})
 
 const mapVatReportStatusToPeriodStatus = (status: number): OpenPeriod['status'] => {
   // Treat draft/in-progress as open; all other states as non-open in this UI.
