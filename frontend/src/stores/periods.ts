@@ -32,8 +32,16 @@ export interface VatReportSalesEntry {
   vatAmount: number
 }
 
+export interface PagedResult<T> {
+  items: T[]
+  totalCount: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
 export const API_BASE = 'https://localhost:7033'
-export const VAT_REPORTS_ENDPOINT = `${API_BASE}/api/VatReports?companyId=1`
+export const VAT_REPORTS_ENDPOINT = `${API_BASE}/api/VatReports?companyId=1&page=1&pageSize=50`
 
 const mapVatReportStatusToPeriodStatus = (status: number): OpenPeriod['status'] => {
   // Treat draft/in-progress as open; all other states as non-open in this UI.

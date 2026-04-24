@@ -10,6 +10,7 @@ import {
   usePeriodsStore,
   type VatReportSalesEntry,
   type VatReport,
+  type PagedResult,
 } from '../stores/periods'
 
 const SAVE_ENDPOINT = `${API_BASE}/api/VatReports/save`
@@ -30,9 +31,11 @@ interface SaveVatReportRequest {
 const periodsStore = usePeriodsStore()
 const { selectedPeriodId } = storeToRefs(periodsStore)
 
-const { data, error, isFetching } = useApiFetch<VatReport[]>(VAT_REPORTS_ENDPOINT)
+const { data, error, isFetching } = useApiFetch<PagedResult<VatReport>>(VAT_REPORTS_ENDPOINT)
 
-const periods = computed(() => mapVatReportsToOpenPeriods(data.value ?? []))
+const reports = computed(() => data.value?.items ?? [])
+
+const periods = computed(() => mapVatReportsToOpenPeriods(reports.value))
 
 const selectedReport = computed(() => {
   if (selectedPeriodId.value === null) {
@@ -40,7 +43,7 @@ const selectedReport = computed(() => {
   }
 
   return (
-    (data.value ?? []).find((report) => report.reportingPeriodId === selectedPeriodId.value) ?? null
+    reports.value.find((report) => report.reportingPeriodId === selectedPeriodId.value) ?? null
   )
 })
 

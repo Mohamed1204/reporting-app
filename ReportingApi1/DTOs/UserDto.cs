@@ -5,10 +5,15 @@ namespace ReportingApi1.DTOs
     public class RegisterUserDto
     {
         [Required]
+        [MinLength(3)]
+        [MaxLength(50)]
         public string UserName { get; set;  } = string.Empty;
+
         [Required]
+        [MaxLength(100)]
         public string Password { get; set; } = string.Empty;
-        [Required]
+
+        [Range(1, int.MaxValue)]
         public int CompanyId { get; set; }
     }
 

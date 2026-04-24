@@ -17,6 +17,10 @@ public class CreateSalesEntryDto
     [Required]
     [ValidCountryCode]
     public string Country { get; set; } = string.Empty;
+
+    [Range(typeof(decimal), "0", "9999999999.99", ParseLimitsInInvariantCulture = true)]
     public decimal Amount { get; set; }
+
+    [Range(0, 100)]
     public decimal VatRate { get; set; }
 }

@@ -9,7 +9,7 @@ namespace ReportingApi1.Services;
 
 public interface IVatReportService
 {
-    Task<List<VatReportDto>> GetAllAsync(int? companyId = null, ReportStatus? status = null);
+    Task<PagedResult<VatReportDto>> GetAllAsync(int page, int pageSize, int? companyId = null, ReportStatus? status = null);
     Task<VatReportDto?> GetByIdAsync(int id);
     Task<List<VatReportDto>> GetByCompanyAsync(int companyId);
     Task<VatReportDto> CreateAsync(CreateVatReportDto dto);
@@ -30,13 +30,14 @@ public class VatReportService : IVatReportService
         _currentUserService = currentUserService;
     }
 
-    public async Task<List<VatReportDto>> GetAllAsync(int? companyId = null, ReportStatus? status = null)
+    public async Task<PagedResult<VatReportDto>> GetAllAsync(int page, int pageSize, int? companyId = null, ReportStatus? status = null)
     {
         var query = _context.VatReports
             .Include(vr => vr.Company)
             .Include(vr => vr.ReportingPeriod)
             .Include(vr => vr.SalesEntries)
             .AsQueryable();
+            
 
         if (companyId.HasValue)
             query = query.Where(vr => vr.CompanyId == companyId.Value);
@@ -44,7 +45,25 @@ public class VatReportService : IVatReportService
         if (status.HasValue)
             query = query.Where(vr => vr.Status == status.Value);
 
-        return await query.Select(vr => MapToDto(vr)).ToListAsync();
+        var totalCount = await query.CountAsync();
+
+        var items = await query
+         .OrderByDescending(vr => vr.Id)   // you MUST order before skip/take
+         .Skip((page - 1) * pageSize)
+         .Take(pageSize)
+         .Select(vr => MapToDto(vr))
+         .ToListAsync();
+
+        return new PagedResult<VatReportDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize,
+            TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
+        };
+
+        //return await query.Select(vr => MapToDto(vr)).ToListAsync();
     }
 
     public async Task<VatReportDto?> GetByIdAsync(int id)
@@ -192,6 +211,9 @@ public class VatReportService : IVatReportService
         }).ToList();
 
         vatReport.Status = ReportStatus.Draft;
+
+        _context.Entry(vatReport).Property(vr => vr.RowVersion).OriginalValue = dto.RowVersion;
+
         await _context.SaveChangesAsync();
         return (await GetByIdAsync(vatReport.Id))!;
     }

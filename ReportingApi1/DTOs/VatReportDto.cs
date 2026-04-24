@@ -20,20 +20,23 @@ public class VatReportDto
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 }
 
-public class CreateVatReportDto : IValidatableObject
+public class CreateVatReportDto
 {
     public int CompanyId { get; set; }
     public int ReportingPeriodId { get; set; }
     public List<CreateSalesEntryDto> SalesEntries { get; set; } = new();
-
-    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
-        => SalesEntryValidation.ValidateNoDuplicateCountries(SalesEntries);
 }
 
+// Kept on the DA + IValidatableObject pattern as a reference example.
+// CreateVatReportDto uses FluentValidation instead; don't mix both styles on the same DTO.
 public class UpdateVatReportDto : IValidatableObject
 {
+    [Range(1, int.MaxValue)]
     public int CompanyId { get; set; }
+
+    [Range(1, int.MaxValue)]
     public int ReportingPeriodId { get; set; }
+
     public ReportStatus Status { get; set; }
     public List<CreateSalesEntryDto> SalesEntries { get; set; } = new();
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();

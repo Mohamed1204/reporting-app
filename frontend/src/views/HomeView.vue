@@ -9,6 +9,7 @@ import {
   mapVatReportsToOpenPeriods,
   usePeriodsStore,
   type VatReport,
+  type PagedResult,
 } from '../stores/periods'
 
 const router = useRouter()
@@ -19,9 +20,9 @@ onMounted(() => {
   periodsStore.clearSelection()
 })
 
-const { data, error, isFetching } = useApiFetch<VatReport[]>(VAT_REPORTS_ENDPOINT)
+const { data, error, isFetching } = useApiFetch<PagedResult<VatReport>>(VAT_REPORTS_ENDPOINT)
 
-const periods = computed(() => mapVatReportsToOpenPeriods(data.value ?? []))
+const periods = computed(() => mapVatReportsToOpenPeriods(data.value?.items ?? []))
 
 const selectedPeriod = computed(() =>
   periods.value.find((period) => period.id === selectedPeriodId.value),

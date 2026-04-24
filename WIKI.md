@@ -139,4 +139,4 @@ Worth being explicit about the edges:
 - No email notifications — users don't get pinged when a report is rejected or approved.
 - No file uploads — sales data has to be entered line-by-line; there's no CSV import.
 - No in-app reporting deadlines / reminders — companies are expected to know their own deadlines.
-- No multi-user collaboration indicators — two users from the same company saving the same report at the same time may overwrite each other's work (though the app does detect version conflicts on submit).
+- No multi-user collaboration indicators — if two users from the same company edit the same report at the same time, whoever saves second will get a conflict error and have to reload. The app detects the conflict but doesn't help merge the two versions.
