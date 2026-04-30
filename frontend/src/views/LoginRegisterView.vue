@@ -56,14 +56,8 @@ watch(mode, (val) => {
 async function handleLogin() {
   error.value = ''
   try {
-    const res = await fetch('/api/Auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ UserName: loginForm.value.UserName, Password: loginForm.value.Password }),
-    })
-    if (res.ok) {
-      const result = await res.json()
-      authStore.login(result.token)
+    const ok = await authStore.login(loginForm.value.UserName, loginForm.value.Password)
+    if (ok) {
       router.push('/')
     } else {
       error.value = 'Invalid username or password.'

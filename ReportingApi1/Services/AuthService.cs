@@ -1,50 +1,56 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using ReportingApi1.Data;
 using ReportingApi1.DTOs;
 using ReportingApi1.Entities;
 using ReportingApi1.Exceptions;
+using ReportingApi1.Infrastructure;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace ReportingApi1.Services
 {
+    public record AuthResult(AuthResponseDto Response, string RefreshToken, DateTime RefreshExpiresAt);
+
     public interface IAuthService
     {
         Task RegisterAsync(RegisterUserDto dto);
-        Task<String?> LoginAsync(LoginUserDto dto);
+        Task<AuthResult?> LoginAsync(LoginUserDto dto);
+        Task<AuthResult?> RefreshAsync(string rawRefreshToken);
+        Task LogoutAsync(string rawRefreshToken);
     }
 
     public class AuthService : IAuthService
     {
         private readonly VatReportingContext _context;
-        private readonly IConfiguration _config;
+        private readonly JwtSettings _jwt;
         private readonly ILogger<AuthService> _logger;
 
-        public AuthService(VatReportingContext context, IConfiguration config, ILogger<AuthService> logger)
+        public AuthService(VatReportingContext context, IOptions<JwtSettings> jwt, ILogger<AuthService> logger)
         {
             _context = context;
-            _config = config;
+            _jwt = jwt.Value;
             _logger = logger;
         }
 
         public async Task RegisterAsync(RegisterUserDto dto)
         {
-            // username must be unique
             if (await _context.Users.AnyAsync(u => u.UserName == dto.UserName))
             {
                 _logger.LogInformation("Registration failed: Username {UserName} already exists", dto.UserName);
                 throw new BadRequestException("Registration Failed");
             }
-          
 
-            // company must exist
             var company = await _context.Companies.FindAsync(dto.CompanyId);
-            if (company == null) {
+            if (company == null)
+            {
                 _logger.LogInformation("Registration failed: Company with ID {CompanyId} not found", dto.CompanyId);
                 throw new BadRequestException("Registration Failed");
-            } 
+            }
+
             var user = new User
             {
                 UserName = dto.UserName,
@@ -57,24 +63,89 @@ namespace ReportingApi1.Services
             _logger.LogInformation("Register succeeded: user {UserName} created for company {CompanyId}", dto.UserName, dto.CompanyId);
         }
 
-        public async Task<String?> LoginAsync(LoginUserDto dto)
+        public async Task<AuthResult?> LoginAsync(LoginUserDto dto)
         {
             var user = await _context.Users.SingleOrDefaultAsync(u => u.UserName == dto.UserName);
             if (user == null) return null;
-
             if (!VerifyPassword(user.PasswordHash, dto.Password)) return null;
 
-            return GenerateToken(user);
+            var rawRefresh = GenerateRefreshToken();
+            var expiresAt = DateTime.UtcNow.AddDays(_jwt.RefreshExpiryDays);
+
+            _context.RefreshTokens.Add(new RefreshToken
+            {
+                UserId = user.Id,
+                TokenHash = HashToken(rawRefresh),
+                ExpiresAt = expiresAt,
+                CreatedAt = DateTime.UtcNow
+            });
+            await _context.SaveChangesAsync();
+
+            return new AuthResult(BuildResponse(user), rawRefresh, expiresAt);
         }
 
-        private string GenerateToken(User user)
+        public async Task<AuthResult?> RefreshAsync(string rawRefreshToken)
         {
-            var secret = _config["Jwt:Secret"]!;
-            var issuer = _config["Jwt:Issuer"];
-            var audience = _config["Jwt:Audience"];
-            var expiry = int.Parse(_config["Jwt:ExpiryMinutes"]!);
+            var hash = HashToken(rawRefreshToken);
+            var existing = await _context.RefreshTokens
+                .Include(rt => rt.User)
+                .FirstOrDefaultAsync(rt => rt.TokenHash == hash);
 
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
+            if (existing == null) return null;
+
+            if (existing.RevokedAt != null)
+            {
+                _logger.LogWarning("Refresh token reuse detected for user {UserId}", existing.UserId);
+                var active = await _context.RefreshTokens
+                    .Where(rt => rt.UserId == existing.UserId && rt.RevokedAt == null)
+                    .ToListAsync();
+                foreach (var t in active) t.RevokedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                return null;
+            }
+
+            if (existing.ExpiresAt < DateTime.UtcNow) return null;
+
+            var newRaw = GenerateRefreshToken();
+            var newExpiresAt = DateTime.UtcNow.AddDays(_jwt.RefreshExpiryDays);
+            var newToken = new RefreshToken
+            {
+                UserId = existing.UserId,
+                TokenHash = HashToken(newRaw),
+                ExpiresAt = newExpiresAt,
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.RefreshTokens.Add(newToken);
+            await _context.SaveChangesAsync();
+
+            existing.RevokedAt = DateTime.UtcNow;
+            existing.ReplacedByTokenId = newToken.Id;
+            await _context.SaveChangesAsync();
+
+            return new AuthResult(BuildResponse(existing.User), newRaw, newExpiresAt);
+        }
+
+        public async Task LogoutAsync(string rawRefreshToken)
+        {
+            var hash = HashToken(rawRefreshToken);
+            var existing = await _context.RefreshTokens
+                .FirstOrDefaultAsync(rt => rt.TokenHash == hash);
+
+            if (existing == null || existing.RevokedAt != null) return;
+
+            existing.RevokedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+
+        private AuthResponseDto BuildResponse(User user) => new()
+        {
+            Token = GenerateAccessToken(user),
+            Role = user.Role.ToString()
+        };
+
+        private string GenerateAccessToken(User user)
+        {
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwt.Secret));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var claims = new[]
@@ -86,19 +157,30 @@ namespace ReportingApi1.Services
             };
 
             var token = new JwtSecurityToken(
-                issuer: issuer,
-                audience: audience,
+                issuer: _jwt.Issuer,
+                audience: _jwt.Audience,
                 claims: claims,
-                expires: DateTime.UtcNow.AddMinutes(expiry),
+                expires: DateTime.UtcNow.AddMinutes(_jwt.ExpiryMinutes),
                 signingCredentials: creds
             );
 
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
+        private static string GenerateRefreshToken()
+        {
+            var bytes = RandomNumberGenerator.GetBytes(32);
+            return Convert.ToBase64String(bytes);
+        }
+
+        private static string HashToken(string token)
+        {
+            var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(token));
+            return Convert.ToBase64String(bytes);
+        }
+
         private static string HashPassword(string password)
         {
-            // work factor 12 is a reasonable default; adjust if needed
             return BCrypt.Net.BCrypt.HashPassword(password, workFactor: 12);
         }
 

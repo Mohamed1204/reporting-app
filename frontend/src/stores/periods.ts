@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 
 export interface OpenPeriod {
   id: number
+  reportId: number
   name: string
   startDate: string
   endDate: string
@@ -19,6 +20,20 @@ export interface VatReport {
   submittedAt: string
   status: number
   salesEntries: VatReportSalesEntry[]
+  totalAmount: number
+  totalVat: number
+  rowVersion: string
+}
+
+export interface VatReportListItem {
+  id: number
+  companyId: number
+  companyName: string
+  reportingPeriodId: number
+  startDate: string
+  endDate: string
+  submittedAt: string
+  status: number
   totalAmount: number
   totalVat: number
   rowVersion: string
@@ -74,9 +89,12 @@ const mapVatReportStatusToPeriodStatus = (status: number): OpenPeriod['status'] 
   return status === 0 ? 'open' : 'closing_soon'
 }
 
-export const mapVatReportsToOpenPeriods = (reports: VatReport[]): OpenPeriod[] =>
+export const mapVatReportsToOpenPeriods = (
+  reports: Array<VatReport | VatReportListItem>,
+): OpenPeriod[] =>
   reports.map((report) => ({
     id: report.reportingPeriodId,
+    reportId: report.id,
     name: `Period ${report.reportingPeriodId}`,
     startDate: report.startDate,
     endDate: report.endDate,
@@ -85,19 +103,23 @@ export const mapVatReportsToOpenPeriods = (reports: VatReport[]): OpenPeriod[] =
 
 export const usePeriodsStore = defineStore('periods', () => {
   const selectedPeriodId = ref<number | null>(null)
+  const selectedReportId = ref<number | null>(null)
 
   const hasSelectedPeriod = computed(() => selectedPeriodId.value !== null)
 
-  const selectPeriod = (id: number) => {
-    selectedPeriodId.value = id
+  const selectPeriod = (periodId: number, reportId: number) => {
+    selectedPeriodId.value = periodId
+    selectedReportId.value = reportId
   }
 
   const clearSelection = () => {
     selectedPeriodId.value = null
+    selectedReportId.value = null
   }
 
   return {
     selectedPeriodId,
+    selectedReportId,
     hasSelectedPeriod,
     selectPeriod,
     clearSelection,

@@ -9,7 +9,7 @@ namespace ReportingApi1.Services;
 
 public interface IVatReportService
 {
-    Task<PagedResult<VatReportDto>> GetAllAsync(int page, int pageSize, int? companyId = null, ReportStatus? status = null, string? sortBy = null, string? sortDir = null);
+    Task<PagedResult<VatReportListItemDto>> GetAllAsync(int page, int pageSize, int? companyId = null, ReportStatus? status = null, string? sortBy = null, string? sortDir = null);
     Task<VatReportDto?> GetByIdAsync(int id);
     Task<List<VatReportDto>> GetByCompanyAsync(int companyId);
     Task<VatReportDto> CreateAsync(CreateVatReportDto dto);
@@ -30,14 +30,12 @@ public class VatReportService : IVatReportService
         _currentUserService = currentUserService;
     }
 
-    public async Task<PagedResult<VatReportDto>> GetAllAsync(int page, int pageSize, int? companyId = null, ReportStatus? status = null, string? sortBy = null, string? sortDir = null)
+    public async Task<PagedResult<VatReportListItemDto>> GetAllAsync(int page, int pageSize, int? companyId = null, ReportStatus? status = null, string? sortBy = null, string? sortDir = null)
     {
-        var query = _context.VatReports
-            .Include(vr => vr.Company)
-            .Include(vr => vr.ReportingPeriod)
-            .Include(vr => vr.SalesEntries)
-            .AsQueryable();
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
 
+        var query = _context.VatReports.AsQueryable();
 
         if (companyId.HasValue)
             query = query.Where(vr => vr.CompanyId == companyId.Value);
@@ -50,12 +48,25 @@ public class VatReportService : IVatReportService
         var ordered = ApplySort(query, sortBy, sortDir);
 
         var items = await ordered
-         .Skip((page - 1) * pageSize)
-         .Take(pageSize)
-         .Select(vr => MapToDto(vr))
-         .ToListAsync();
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(vr => new VatReportListItemDto
+            {
+                Id = vr.Id,
+                CompanyId = vr.CompanyId,
+                CompanyName = vr.Company.Name,
+                ReportingPeriodId = vr.ReportingPeriodId,
+                StartDate = vr.ReportingPeriod.StartDate,
+                EndDate = vr.ReportingPeriod.EndDate,
+                SubmittedAt = vr.SubmittedAt,
+                Status = vr.Status,
+                TotalAmount = vr.SalesEntries.Sum(se => se.Amount),
+                TotalVat = vr.SalesEntries.Sum(se => se.Amount * se.VatRate / 100),
+                RowVersion = vr.RowVersion
+            })
+            .ToListAsync();
 
-        return new PagedResult<VatReportDto>
+        return new PagedResult<VatReportListItemDto>
         {
             Items = items,
             TotalCount = totalCount,
@@ -63,8 +74,6 @@ public class VatReportService : IVatReportService
             PageSize = pageSize,
             TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
         };
-
-        //return await query.Select(vr => MapToDto(vr)).ToListAsync();
     }
 
     public async Task<VatReportDto?> GetByIdAsync(int id)

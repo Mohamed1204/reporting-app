@@ -20,7 +20,7 @@ public class VatReportsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<PagedResult<VatReportDto>>> GetAll(
+    public async Task<ActionResult<PagedResult<VatReportListItemDto>>> GetAll(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] int? companyId = null,

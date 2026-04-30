@@ -5,12 +5,9 @@ import { useApiFetch, apiFetch } from '../composables/useApiFetch'
 import { storeToRefs } from 'pinia'
 import {
   API_BASE,
-  VAT_REPORTS_ENDPOINT,
-  mapVatReportsToOpenPeriods,
   usePeriodsStore,
   type VatReportSalesEntry,
   type VatReport,
-  type PagedResult,
 } from '../stores/periods'
 
 const SAVE_ENDPOINT = `${API_BASE}/api/VatReports/save`
@@ -29,32 +26,27 @@ interface SaveVatReportRequest {
 }
 
 const periodsStore = usePeriodsStore()
-const { selectedPeriodId } = storeToRefs(periodsStore)
+const { selectedPeriodId, selectedReportId } = storeToRefs(periodsStore)
 
-const { data, error, isFetching } = useApiFetch<PagedResult<VatReport>>(VAT_REPORTS_ENDPOINT)
+const detailEndpoint =
+  selectedReportId.value !== null
+    ? `${API_BASE}/api/VatReports/${selectedReportId.value}`
+    : ''
 
-const reports = computed(() => data.value?.items ?? [])
-
-const periods = computed(() => mapVatReportsToOpenPeriods(reports.value))
-
-const selectedReport = computed(() => {
-  if (selectedPeriodId.value === null) {
-    return null
-  }
-
-  return (
-    reports.value.find((report) => report.reportingPeriodId === selectedPeriodId.value) ?? null
-  )
-})
+const { data: report, error, isFetching } = useApiFetch<VatReport>(detailEndpoint)
 
 const salesEntries = ref<VatReportSalesEntry[]>([])
 
 watch(
-  selectedReport,
-  (report) => {
-    salesEntries.value = report?.salesEntries.map((entry) => ({ ...entry })) ?? []
+  report,
+  (r) => {
+    salesEntries.value = r?.salesEntries.map((entry) => ({ ...entry })) ?? []
   },
   { immediate: true },
+)
+
+const periodStatus = computed<'open' | 'closing_soon'>(() =>
+  report.value?.status === 0 ? 'open' : 'closing_soon',
 )
 
 const newCountry = ref('')
@@ -134,13 +126,6 @@ const isSubmittingReport = ref(false)
 const actionMessage = ref('')
 const actionMessageType = ref<'info' | 'success'>('info')
 
-const displayedPeriods = computed(() => {
-  if (selectedPeriodId.value === null) {
-    return []
-  }
-
-  return periods.value.filter((period) => period.id === selectedPeriodId.value)
-})
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat('en-US', {
@@ -215,7 +200,7 @@ const onSaveDraft = async () => {
   }
 
   const payload: SaveVatReportRequest = {
-    companyId: selectedReport.value?.companyId ?? 1,
+    companyId: report.value?.companyId ?? 1,
     reportingPeriodId: selectedPeriodId.value,
     status: 0,
     salesEntries: salesEntries.value.map((entry) => ({
@@ -223,7 +208,7 @@ const onSaveDraft = async () => {
       amount: entry.amount,
       vatRate: entry.vatRate,
     })),
-    rowVersion: selectedReport.value?.rowVersion ?? '',
+    rowVersion: report.value?.rowVersion ?? '',
   }
 
   isSavingDraft.value = true
@@ -239,18 +224,7 @@ const onSaveDraft = async () => {
     }
 
     const savedReport = (await response.json()) as VatReport
-    const currentReports = [...(data.value?.items ?? [])]
-    const reportIndex = currentReports.findIndex((report) => report.id === savedReport.id)
-
-    if (reportIndex >= 0) {
-      currentReports[reportIndex] = savedReport
-    } else {
-      currentReports.push(savedReport)
-    }
-
-    if (data.value) {
-      data.value = { ...data.value, items: currentReports }
-    }
+    report.value = savedReport
     salesEntries.value = savedReport.salesEntries.map((entry) => ({ ...entry }))
 
     actionMessageType.value = 'success'
@@ -271,7 +245,7 @@ const onSubmitReport = async () => {
   }
 
   const payload: SaveVatReportRequest = {
-    companyId: selectedReport.value?.companyId ?? 1,
+    companyId: report.value?.companyId ?? 1,
     reportingPeriodId: selectedPeriodId.value!,
     status: 1,
     salesEntries: salesEntries.value.map((entry) => ({
@@ -279,7 +253,7 @@ const onSubmitReport = async () => {
       amount: entry.amount,
       vatRate: entry.vatRate,
     })),
-    rowVersion: selectedReport.value?.rowVersion ?? '',
+    rowVersion: report.value?.rowVersion ?? '',
   }
 
   isSubmittingReport.value = true
@@ -296,18 +270,7 @@ const onSubmitReport = async () => {
 
     if (response.status !== 204) {
       const submittedReport = (await response.json()) as VatReport
-      const currentReports = [...(data.value?.items ?? [])]
-      const reportIndex = currentReports.findIndex((report) => report.id === submittedReport.id)
-
-      if (reportIndex >= 0) {
-        currentReports[reportIndex] = submittedReport
-      } else {
-        currentReports.push(submittedReport)
-      }
-
-      if (data.value) {
-        data.value = { ...data.value, items: currentReports }
-      }
+      report.value = submittedReport
       salesEntries.value = submittedReport.salesEntries.map((entry) => ({ ...entry }))
     }
 
@@ -330,25 +293,20 @@ const onSubmitReport = async () => {
       <p>Your selected period is highlighted below.</p>
     </section>
 
-    <p v-if="isFetching" class="state">Loading open periods...</p>
-    <p v-else-if="error" class="state error">Failed to load periods. Try again later.</p>
+    <p v-if="isFetching" class="state">Loading report...</p>
+    <p v-else-if="error" class="state error">Failed to load report. Try again later.</p>
 
-    <section v-else-if="displayedPeriods.length > 0" class="cards-grid">
-      <article
-        v-for="period in displayedPeriods"
-        :key="period.id"
-        class="period-card"
-        :class="{ selected: true }"
-      >
-        <span class="status" :class="period.status">
-          {{ period.status === 'closing_soon' ? 'Closing Soon' : 'Open' }}
+    <section v-else-if="report" class="cards-grid">
+      <article class="period-card selected">
+        <span class="status" :class="periodStatus">
+          {{ periodStatus === 'closing_soon' ? 'Closing Soon' : 'Open' }}
         </span>
-        <h2>{{ period.name }}</h2>
-        <p>{{ formatDate(period.startDate) }} - {{ formatDate(period.endDate) }}</p>
+        <h2>Period {{ report.reportingPeriodId }}</h2>
+        <p>{{ formatDate(report.startDate) }} - {{ formatDate(report.endDate) }}</p>
       </article>
     </section>
 
-    <section v-if="selectedPeriodId !== null" class="sales-section">
+    <section v-if="report" class="sales-section">
       <h2>Sales Entries</h2>
       <p class="section-subtitle">Submit sales entries and review existing ones for this period.</p>
 

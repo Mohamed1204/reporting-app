@@ -16,6 +16,7 @@ public class VatReportingContext : DbContext
     public DbSet<SalesEntry> SalesEntries { get; set; }
     public DbSet<Product> Products { get; set; }
     public DbSet<User> Users { get; set; }
+    public DbSet<RefreshToken> RefreshTokens { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -90,7 +91,7 @@ public class VatReportingContext : DbContext
             entity.Property(e => e.Price).IsRequired().HasPrecision(18, 2);
 
             entity.HasIndex(e => e.Name).IsUnique();
-            
+
             entity.HasData(
                 new Product { Id = 1, Name = "Laptop", Category = "Electronics", Price = 999.99m },
                 new Product { Id = 2, Name = "Desk Chair", Category = "Furniture", Price = 249.99m },
@@ -111,6 +112,18 @@ public class VatReportingContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.CompanyId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<RefreshToken>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TokenHash).IsRequired().HasMaxLength(128);
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

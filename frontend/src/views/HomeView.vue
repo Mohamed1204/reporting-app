@@ -8,7 +8,8 @@ import {
   VAT_REPORTS_ENDPOINT,
   mapVatReportsToOpenPeriods,
   usePeriodsStore,
-  type VatReport,
+  type OpenPeriod,
+  type VatReportListItem,
   type PagedResult,
 } from '../stores/periods'
 
@@ -20,7 +21,7 @@ onMounted(() => {
   periodsStore.clearSelection()
 })
 
-const { data, error, isFetching } = useApiFetch<PagedResult<VatReport>>(VAT_REPORTS_ENDPOINT)
+const { data, error, isFetching } = useApiFetch<PagedResult<VatReportListItem>>(VAT_REPORTS_ENDPOINT)
 
 const periods = computed(() => mapVatReportsToOpenPeriods(data.value?.items ?? []))
 
@@ -35,8 +36,8 @@ const formatDate = (value: string) =>
     year: 'numeric',
   }).format(new Date(value))
 
-const onSelectPeriod = async (id: number) => {
-  periodsStore.selectPeriod(id)
+const onSelectPeriod = async (period: OpenPeriod) => {
+  periodsStore.selectPeriod(period.id, period.reportId)
   await router.push({ name: 'period-review' })
 }
 </script>
@@ -58,7 +59,7 @@ const onSelectPeriod = async (id: number) => {
         class="period-card"
         :class="{ selected: selectedPeriodId === period.id }"
         type="button"
-        @click="onSelectPeriod(period.id)"
+        @click="onSelectPeriod(period)"
       >
         <span class="status" :class="period.status">
           {{ period.status === 'closing_soon' ? 'Closing Soon' : 'Open' }}
