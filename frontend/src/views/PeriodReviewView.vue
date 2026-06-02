@@ -5,22 +5,28 @@ import { useApiFetch, apiFetch } from '../composables/useApiFetch'
 import { storeToRefs } from 'pinia'
 import {
   API_BASE,
+  reportStatusLabel,
   usePeriodsStore,
   type VatReportSalesEntry,
   type VatReport,
+  type BuyerType,
+  type ProductCategory,
 } from '../stores/periods'
 
 const SAVE_ENDPOINT = `${API_BASE}/api/VatReports/save`
-const SUBMIT_ENDPOINT = `${API_BASE}/api/VatReports`
+const SUBMIT_ENDPOINT = `${API_BASE}/api/VatReports/submit`
 
 interface SaveVatReportRequest {
   companyId: number
   reportingPeriodId: number
   status: number
   salesEntries: Array<{
-    country: string
+    buyerCountry: string
     amount: number
-    vatRate: number
+    buyerType?: BuyerType
+    productCategory?: ProductCategory
+    buyerHasValidVatNumber?: boolean
+    saleDate?: string
   }>
   rowVersion: string
 }
@@ -29,9 +35,7 @@ const periodsStore = usePeriodsStore()
 const { selectedPeriodId, selectedReportId } = storeToRefs(periodsStore)
 
 const detailEndpoint =
-  selectedReportId.value !== null
-    ? `${API_BASE}/api/VatReports/${selectedReportId.value}`
-    : ''
+  selectedReportId.value !== null ? `${API_BASE}/api/VatReports/${selectedReportId.value}` : ''
 
 const { data: report, error, isFetching } = useApiFetch<VatReport>(detailEndpoint)
 
@@ -45,14 +49,31 @@ watch(
   { immediate: true },
 )
 
-const periodStatus = computed<'open' | 'closing_soon'>(() =>
-  report.value?.status === 0 ? 'open' : 'closing_soon',
-)
+const reportStatusText = computed(() => reportStatusLabel(report.value?.status ?? 0))
+const reportStatusClass = computed(() => reportStatusText.value.toLowerCase())
+const isReadOnly = computed(() => report.value?.status === 1 || report.value?.status === 2)
 
 const newCountry = ref('')
 const newAmount = ref<number | null>(null)
-const newVatRate = ref<number | null>(null)
+const newBuyerType = ref<BuyerType | ''>('')
+const newProductCategory = ref<ProductCategory | ''>('')
+const newBuyerHasValidVatNumber = ref(false)
+const newSaleDate = ref('')
 const formError = ref('')
+
+const buyerTypeOptions: BuyerType[] = ['B2B', 'B2C']
+
+const productCategoryOptions: ProductCategory[] = [
+  'Standard',
+  'Food',
+  'Books',
+  'Medicine',
+  'FinancialServices',
+  'Education',
+]
+
+const periodMinDate = computed(() => report.value?.startDate.slice(0, 10) ?? '')
+const periodMaxDate = computed(() => report.value?.endDate.slice(0, 10) ?? '')
 
 const countryOptions = [
   { label: 'Austria', value: 'AT' },
@@ -117,15 +138,26 @@ const totalSalesAmount = computed(() =>
 )
 
 const totalVatAmount = computed(() =>
-  salesEntries.value.reduce((sum, entry) => sum + entry.vatAmount, 0),
+  salesEntries.value.reduce((sum, entry) => sum + (entry.breakdown?.vatAmount ?? 0), 0),
 )
+
+const vatByCountry = computed(() => {
+  const map = new Map<string, number>()
+  for (const entry of salesEntries.value) {
+    const vat = entry.breakdown?.vatAmount ?? 0
+    if (vat === 0) continue
+    map.set(entry.buyerCountry, (map.get(entry.buyerCountry) ?? 0) + vat)
+  }
+  return Array.from(map.entries())
+    .map(([country, vatAmount]) => ({ country, vatAmount }))
+    .sort((a, b) => b.vatAmount - a.vatAmount)
+})
 
 const isReportSubmitted = ref(false)
 const isSavingDraft = ref(false)
 const isSubmittingReport = ref(false)
 const actionMessage = ref('')
 const actionMessageType = ref<'info' | 'success'>('info')
-
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat('en-US', {
@@ -145,13 +177,15 @@ const formatCurrency = (value: number) =>
 const clearForm = () => {
   newCountry.value = ''
   newAmount.value = null
-  newVatRate.value = null
+  newBuyerType.value = ''
+  newProductCategory.value = ''
+  newBuyerHasValidVatNumber.value = false
+  newSaleDate.value = ''
 }
 
 const onSubmitSalesEntry = () => {
   const country = toCountryCode(newCountry.value)
   const amount = newAmount.value
-  const vatRate = newVatRate.value
 
   if (!country) {
     formError.value = 'Country is required.'
@@ -163,21 +197,37 @@ const onSubmitSalesEntry = () => {
     return
   }
 
-  if (vatRate === null || !Number.isFinite(vatRate) || vatRate < 0) {
-    formError.value = 'VAT rate must be 0 or greater.'
+  if (!newBuyerType.value) {
+    formError.value = 'Buyer type is required.'
     return
   }
 
-  const vatAmount = Number(((amount * vatRate) / 100).toFixed(4))
+  if (!newProductCategory.value) {
+    formError.value = 'Product category is required.'
+    return
+  }
+
+  if (!newSaleDate.value) {
+    formError.value = 'Sale date is required.'
+    return
+  }
+
+  if (newSaleDate.value < periodMinDate.value || newSaleDate.value > periodMaxDate.value) {
+    formError.value = 'Sale date must be within the reporting period.'
+    return
+  }
 
   salesEntries.value = [
     ...salesEntries.value,
     {
       id: nextSalesEntryId.value,
-      country,
+      buyerCountry: country,
       amount,
-      vatRate,
-      vatAmount,
+      buyerType: newBuyerType.value,
+      productCategory: newProductCategory.value,
+      buyerHasValidVatNumber:
+        newBuyerType.value === 'B2B' ? newBuyerHasValidVatNumber.value : false,
+      saleDate: newSaleDate.value,
     },
   ]
 
@@ -204,9 +254,12 @@ const onSaveDraft = async () => {
     reportingPeriodId: selectedPeriodId.value,
     status: 0,
     salesEntries: salesEntries.value.map((entry) => ({
-      country: toCountryCode(entry.country),
+      buyerCountry: toCountryCode(entry.buyerCountry),
       amount: entry.amount,
-      vatRate: entry.vatRate,
+      buyerType: entry.buyerType,
+      productCategory: entry.productCategory,
+      buyerHasValidVatNumber: entry.buyerHasValidVatNumber,
+      saleDate: entry.saleDate,
     })),
     rowVersion: report.value?.rowVersion ?? '',
   }
@@ -249,9 +302,12 @@ const onSubmitReport = async () => {
     reportingPeriodId: selectedPeriodId.value!,
     status: 1,
     salesEntries: salesEntries.value.map((entry) => ({
-      country: toCountryCode(entry.country),
+      buyerCountry: toCountryCode(entry.buyerCountry),
       amount: entry.amount,
-      vatRate: entry.vatRate,
+      buyerType: entry.buyerType,
+      productCategory: entry.productCategory,
+      buyerHasValidVatNumber: entry.buyerHasValidVatNumber,
+      saleDate: entry.saleDate,
     })),
     rowVersion: report.value?.rowVersion ?? '',
   }
@@ -260,7 +316,7 @@ const onSubmitReport = async () => {
 
   try {
     const response = await apiFetch(SUBMIT_ENDPOINT, {
-      method: 'PUT',
+      method: 'POST',
       body: JSON.stringify(payload),
     })
 
@@ -298,8 +354,8 @@ const onSubmitReport = async () => {
 
     <section v-else-if="report" class="cards-grid">
       <article class="period-card selected">
-        <span class="status" :class="periodStatus">
-          {{ periodStatus === 'closing_soon' ? 'Closing Soon' : 'Open' }}
+        <span class="status" :class="reportStatusClass">
+          {{ reportStatusText }}
         </span>
         <h2>Period {{ report.reportingPeriodId }}</h2>
         <p>{{ formatDate(report.startDate) }} - {{ formatDate(report.endDate) }}</p>
@@ -310,7 +366,28 @@ const onSubmitReport = async () => {
       <h2>Sales Entries</h2>
       <p class="section-subtitle">Submit sales entries and review existing ones for this period.</p>
 
-      <form class="sales-form" @submit.prevent="onSubmitSalesEntry">
+      <p v-if="isReadOnly" class="readonly-notice">
+        This report is <strong>{{ reportStatusText }}</strong> and cannot be edited.
+      </p>
+
+      <section v-if="isReadOnly" class="payment-summary">
+        <div class="payment-headline">
+          <span class="payment-label">Total VAT to remit</span>
+          <span class="payment-amount">{{ formatCurrency(totalVatAmount) }}</span>
+        </div>
+
+        <div v-if="vatByCountry.length > 0" class="country-breakdown">
+          <h4>By destination country</h4>
+          <ul>
+            <li v-for="row in vatByCountry" :key="row.country">
+              <span class="country-code">{{ row.country }}</span>
+              <span class="country-amount">{{ formatCurrency(row.vatAmount) }}</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <form v-if="!isReadOnly" class="sales-form" @submit.prevent="onSubmitSalesEntry">
         <label>
           Country
           <select v-model="newCountry" name="country" required>
@@ -334,13 +411,42 @@ const onSubmitReport = async () => {
         </label>
 
         <label>
-          VAT Rate (%)
+          Buyer Type
+          <select v-model="newBuyerType" name="buyerType" required>
+            <option disabled value="">Select buyer type</option>
+            <option v-for="opt in buyerTypeOptions" :key="opt" :value="opt">
+              {{ opt }}
+            </option>
+          </select>
+        </label>
+
+        <label v-if="newBuyerType === 'B2B'" class="checkbox-label">
           <input
-            v-model.number="newVatRate"
-            type="number"
-            name="vatRate"
-            min="0"
-            step="0.01"
+            v-model="newBuyerHasValidVatNumber"
+            type="checkbox"
+            name="buyerHasValidVatNumber"
+          />
+          Buyer has valid VAT number
+        </label>
+
+        <label>
+          Product Category
+          <select v-model="newProductCategory" name="productCategory" required>
+            <option disabled value="">Select category</option>
+            <option v-for="opt in productCategoryOptions" :key="opt" :value="opt">
+              {{ opt }}
+            </option>
+          </select>
+        </label>
+
+        <label>
+          Sale Date
+          <input
+            v-model="newSaleDate"
+            type="date"
+            name="saleDate"
+            :min="periodMinDate"
+            :max="periodMaxDate"
             required
           />
         </label>
@@ -367,12 +473,17 @@ const onSubmitReport = async () => {
           <tbody>
             <tr v-for="entry in salesEntries" :key="entry.id">
               <td>{{ entry.id }}</td>
-              <td>{{ entry.country }}</td>
+              <td>{{ entry.buyerCountry }}</td>
               <td>{{ formatCurrency(entry.amount) }}</td>
-              <td>{{ entry.vatRate.toFixed(2) }}%</td>
-              <td>{{ formatCurrency(entry.vatAmount) }}</td>
+              <td>{{ entry.breakdown ? entry.breakdown.vatRate.toFixed(2) + '%' : '—' }}</td>
+              <td>{{ entry.breakdown ? formatCurrency(entry.breakdown.vatAmount) : '—' }}</td>
               <td>
-                <button type="button" class="row-delete-btn" @click="onDeleteSalesEntry(entry.id)">
+                <button
+                  v-if="!isReadOnly"
+                  type="button"
+                  class="row-delete-btn"
+                  @click="onDeleteSalesEntry(entry.id)"
+                >
                   Delete
                 </button>
               </td>
@@ -381,7 +492,7 @@ const onSubmitReport = async () => {
         </table>
       </div>
 
-      <section class="report-actions" aria-label="report-actions">
+      <section v-if="!isReadOnly" class="report-actions" aria-label="report-actions">
         <div class="actions-copy">
           <h3>Finalize this report</h3>
           <p>
@@ -499,16 +610,28 @@ const onSubmitReport = async () => {
   border: 1px solid transparent;
 }
 
-.status.open {
+.status.draft {
+  background: #eef2f6;
+  color: #41607a;
+  border-color: #d1dae3;
+}
+
+.status.submitted {
+  background: #e6f1ff;
+  color: #1e4f9b;
+  border-color: #bcd4f5;
+}
+
+.status.approved {
   background: #ebfff7;
   color: #156e52;
   border-color: #c6f1e2;
 }
 
-.status.closing_soon {
-  background: #fff4eb;
-  color: #9a4d0b;
-  border-color: #ffd8b7;
+.status.rejected {
+  background: #ffe6e0;
+  color: #a93023;
+  border-color: #f7c6bd;
 }
 
 .hint {
@@ -533,6 +656,82 @@ const onSubmitReport = async () => {
   color: #51616f;
 }
 
+.readonly-notice {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: #f4f7fa;
+  border: 1px solid #d7dfe6;
+  color: #41607a;
+}
+
+.payment-summary {
+  margin: 0 0 1.5rem;
+  padding: 1.25rem 1.5rem;
+  border-radius: 12px;
+  border: 1px solid #c6dbef;
+  background: linear-gradient(180deg, #f5fafe 0%, #eaf2fb 100%);
+}
+
+.payment-headline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.payment-label {
+  font-size: 0.95rem;
+  color: #41607a;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.payment-amount {
+  font-size: 2rem;
+  font-weight: 600;
+  color: #12202b;
+}
+
+.country-breakdown {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px dashed #c6dbef;
+}
+
+.country-breakdown h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: #41607a;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+.country-breakdown ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.country-breakdown li {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.95rem;
+  color: #204057;
+}
+
+.country-code {
+  font-weight: 500;
+}
+
+.country-amount {
+  font-variant-numeric: tabular-nums;
+}
+
 .sales-form {
   display: grid;
   gap: 0.75rem;
@@ -545,6 +744,13 @@ const onSubmitReport = async () => {
   display: grid;
   gap: 0.35rem;
   color: #203342;
+  font-weight: 500;
+}
+
+.sales-form label.checkbox-label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
   font-weight: 500;
 }
 

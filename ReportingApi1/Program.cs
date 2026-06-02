@@ -9,6 +9,7 @@ using System.Security.Claims;
 using Serilog;
 using FluentValidation;
 using FluentValidation.AspNetCore;
+using ReportingApi1.Repositories;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -45,6 +46,9 @@ builder.Services.AddScoped<IReportingPeriodService, ReportingPeriodService>();
 builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+builder.Services.AddScoped<IVatRateRepository, VatRateRepository>();
+builder.Services.AddScoped<IVatCalculator, VatCalculationEngine>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
 
 // Configure CORS for Vue frontend
 builder.Services.AddCors(options =>
@@ -101,7 +105,18 @@ builder.Services.AddSwaggerGen(options =>
 var app = builder.Build();
 
 app.UseExceptionHandler();
-app.UseSerilogRequestLogging();
+app.UseSerilogRequestLogging(options =>
+{
+    options.MessageTemplate =
+        "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0}ms — user {UserName}";
+
+    options.EnrichDiagnosticContext = (diag, http) =>
+    {
+        diag.Set("UserName", http.User?.Identity?.Name ?? "anonymous");
+        diag.Set("UserAgent", http.Request.Headers.UserAgent.ToString());
+        diag.Set("QueryString", http.Request.QueryString.Value ?? "");
+    };
+});
 
 if (app.Environment.IsDevelopment())
 {

@@ -13,10 +13,12 @@ namespace ReportingApi1.Controllers
         private const string RefreshCookieName = "refreshToken";
 
         private readonly IAuthService _authService;
+        private readonly IWebHostEnvironment _env;
 
-        public AuthController(IAuthService authService)
+        public AuthController(IAuthService authService, IWebHostEnvironment env)
         {
             _authService = authService;
+            _env = env;
         }
 
         [HttpPost("login")]
@@ -70,7 +72,7 @@ namespace ReportingApi1.Controllers
             Response.Cookies.Append(RefreshCookieName, token, new CookieOptions
             {
                 HttpOnly = true,
-                Secure = true,
+                Secure = !_env.IsDevelopment(),
                 SameSite = SameSiteMode.Strict,
                 Expires = expiresAt
             });
@@ -81,7 +83,7 @@ namespace ReportingApi1.Controllers
             Response.Cookies.Delete(RefreshCookieName, new CookieOptions
             {
                 HttpOnly = true,
-                Secure = true,
+                Secure = !_env.IsDevelopment(),
                 SameSite = SameSiteMode.Strict
             });
         }

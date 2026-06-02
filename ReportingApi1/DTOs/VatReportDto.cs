@@ -57,16 +57,24 @@ public class UpdateVatReportDto : IValidatableObject
     public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
-        => SalesEntryValidation.ValidateNoDuplicateCountries(SalesEntries);
+        => SalesEntryValidation.ValidateNoDuplicateCountries(SalesEntries)
+            .Concat(SalesEntryValidation.ValidateOssScope(SalesEntries));
 }
 
 internal static class SalesEntryValidation
 {
+    // Product categories that are VAT-exempt and therefore outside OSS scope.
+    private static readonly HashSet<ProductCategory> ExemptCategories = new()
+    {
+        ProductCategory.FinancialServices,
+        ProductCategory.Education
+    };
+
     public static IEnumerable<ValidationResult> ValidateNoDuplicateCountries(
         List<CreateSalesEntryDto> salesEntries)
     {
         var duplicates = salesEntries
-            .Select(se => CountryCodes.Normalize(se.Country))
+            .Select(se => CountryCodes.Normalize(se.BuyerCountry))
             .GroupBy(c => c)
             .Where(g => g.Count() > 1)
             .Select(g => g.Key)
@@ -77,6 +85,33 @@ internal static class SalesEntryValidation
             yield return new ValidationResult(
                 $"Duplicate country codes are not allowed: {string.Join(", ", duplicates)}.",
                 new[] { nameof(CreateVatReportDto.SalesEntries) });
+        }
+    }
+
+    // Enforces the OSS scope boundary so out-of-scope sales never reach the VAT engine:
+    // destination must be an EU member, B2B-with-valid-VAT-number is reverse-charge (not OSS),
+    // and VAT-exempt categories are excluded.
+    public static IEnumerable<ValidationResult> ValidateOssScope(
+        List<CreateSalesEntryDto> salesEntries)
+    {
+        var member = new[] { nameof(CreateVatReportDto.SalesEntries) };
+
+        foreach (var se in salesEntries)
+        {
+            if (!CountryCodes.IsEuMember(se.BuyerCountry))
+                yield return new ValidationResult(
+                    $"Buyer country '{se.BuyerCountry}' is not an EU member state and is outside OSS scope.",
+                    member);
+
+            if (se.BuyerType == BuyerType.B2B && se.BuyerHasValidVatNumber)
+                yield return new ValidationResult(
+                    $"B2B sales to a buyer with a valid VAT number ('{se.BuyerCountry}') are reverse-charge and outside OSS scope.",
+                    member);
+
+            if (ExemptCategories.Contains(se.ProductCategory))
+                yield return new ValidationResult(
+                    $"Product category '{se.ProductCategory}' is VAT-exempt and outside OSS scope.",
+                    member);
         }
     }
 }

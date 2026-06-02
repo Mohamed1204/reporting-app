@@ -10,7 +10,9 @@
       "Bash(git *)",
       "Bash(dotnet build *)",
       "Bash(dotnet ef *)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(sqlcmd *)",
+      "Bash(npm uninstall *)"
     ]
   }
 }

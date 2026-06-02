@@ -1,0 +1,156 @@
+● Here's a self-contained requirements doc you can work from. I've made the rules realistic but simplified — you can extend later.
+  VAT Calculation Engine — Requirements
+                                                                                                                                                                                 Goal
+                                                                                                                                                                                 Replace the naive Amount * VatRate / 100 calculation in VatReportService.cs:64 with a proper engine that determines the correct VAT scheme and rate for each sale based on
+  country, customer type, product category, and date.
+  1. Domain inputs
+  Extend SalesEntry (or introduce a richer Sale-shaped object internally) with the fields below. You decide whether to add columns to SalesEntry or introduce a new entity —
+  that's a design choice worth thinking through.
+  ┌────────────────────────┬──────────────────────────────────────────────────────────────────────────┬──────────────────────────────────────────────────────────────┐
+  │         Field          │                                   Type                                   │                            Notes                             │
+  ├────────────────────────┼──────────────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ SellerCountry          │ string (ISO-3166 alpha-2)                                                │ Comes from the Company                                       │
+  ├────────────────────────┼──────────────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ BuyerCountry           │ string (ISO-3166 alpha-2)                                                │ New field                                                    │
+  ├────────────────────────┼──────────────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ BuyerType              │ enum: B2B, B2C                                                           │ New field                                                    │
+  ├────────────────────────┼──────────────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ BuyerHasValidVatNumber │ bool                                                                     │ New field — only meaningful for B2B                          │
+  ├────────────────────────┼──────────────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ ProductCategory        │ enum: e.g. Standard, Food, Books, Medicine, FinancialServices, Education │ New field                                                    │
+  ├────────────────────────┼──────────────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ Amount                 │ decimal (net)                                                            │ Already exists                                               │
+  ├────────────────────────┼──────────────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ Currency               │ string                                                                   │ New — assume EUR for everything in v1, but model it properly │
+  ├────────────────────────┼──────────────────────────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ SaleDate               │ DateOnly                                                                 │ Derive from ReportingPeriod.StartDate for now; refine later  │
+  └────────────────────────┴──────────────────────────────────────────────────────────────────────────┴──────────────────────────────────────────────────────────────┘
+  2. VAT scheme routing rules
+  For each sale, the engine must decide one scheme. Evaluate in this priority order — first match wins:
+  ┌──────────┬──────────────────────────┬─────────────────────────────────────────────────────────────────┬────────────────────────────────────────────────────────────────┐
+  │ Priority │          Scheme          │                            Condition                            │                             Effect                             │
+  ├──────────┼──────────────────────────┼─────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────┤
+  │ 1        │ Exempt                   │ ProductCategory ∈ { FinancialServices, Education }              │ 0% VAT, marked as "Exempt — no VAT applies"                    │
+  ├──────────┼──────────────────────────┼─────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────┤
+  │ 2        │ Zero-rated export        │ BuyerCountry is non-EU                                          │ 0% VAT, marked as "Export outside EU"                          │
+  ├──────────┼──────────────────────────┼─────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────┤
+  │ 3        │ Reverse charge           │ BuyerCountry ≠ SellerCountry, both in EU, BuyerType = B2B,      │ 0% VAT, marked "Reverse charge — buyer self-assesses"          │
+  │          │                          │ BuyerHasValidVatNumber = true                                   │                                                                │
+  ├──────────┼──────────────────────────┼─────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────┤
+  │ 4        │ OSS /                    │ B2C, BuyerCountry ≠ SellerCountry, both in EU, and seller's YTD │ Apply destination-country rate                                 │
+  │          │ destination-country VAT  │  cross-border B2C sales > €10,000                               │                                                                │
+  ├──────────┼──────────────────────────┼─────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────┤
+  │ 5        │ Reduced rate             │ ProductCategory ∈ { Food, Books, Medicine } AND seller country  │ Apply reduced rate                                             │
+  │          │                          │ has a reduced rate for that category                            │                                                                │
+  ├──────────┼──────────────────────────┼─────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────┤
+  │ 6        │ Standard rate            │ Default                                                         │ Apply standard rate of the seller country (or destination      │
+  │          │                          │                                                                 │ country if rule 4 short-circuits otherwise)                    │
+  └──────────┴──────────────────────────┴─────────────────────────────────────────────────────────────────┴────────────────────────────────────────────────────────────────┘
+  Note: these are simplified vs real EU VAT — close enough to be realistic without drowning you. Real complications (margin schemes, distance-selling, e-services
+  place-of-supply) are out of scope.
+  3. Rate data (with effective dating)
+  Rates must be looked up by (country, category, asOfDate). Seed at least the following so you can write meaningful tests:
+  ┌─────────┬──────────┬──────────────────────────────┬────────────────────────────────────────────────┐
+  │ Country │ Standard │     Reduced (categories)     │                 Effective from                 │
+  ├─────────┼──────────┼──────────────────────────────┼────────────────────────────────────────────────┤
+  │ DK      │ 25%      │ —                            │ 1992-01-01                                     │
+  ├─────────┼──────────┼──────────────────────────────┼────────────────────────────────────────────────┤
+  │ DE      │ 19%      │ 7% (Food, Books, Medicine)   │ 2007-01-01                                     │
+  ├─────────┼──────────┼──────────────────────────────┼────────────────────────────────────────────────┤
+  │ DE      │ 16%      │ 5% (Food, Books, Medicine)   │ 2020-07-01 → 2020-12-31 (temporary COVID drop) │
+  ├─────────┼──────────┼──────────────────────────────┼────────────────────────────────────────────────┤
+  │ DE      │ 19%      │ 7% (Food, Books, Medicine)   │ 2021-01-01                                     │
+  ├─────────┼──────────┼──────────────────────────────┼────────────────────────────────────────────────┤
+  │ FR      │ 20%      │ 5.5% (Food, Books, Medicine) │ 2014-01-01                                     │
+  ├─────────┼──────────┼──────────────────────────────┼────────────────────────────────────────────────┤
+  │ NL      │ 21%      │ 9% (Food, Books, Medicine)   │ 2019-01-01                                     │
+  ├─────────┼──────────┼──────────────────────────────┼────────────────────────────────────────────────┤
+  │ SE      │ 25%      │ 12% (Food), 6% (Books)       │ 1996-01-01                                     │
+  └─────────┴──────────┴──────────────────────────────┴────────────────────────────────────────────────┘
+  The temporary German rate change is intentional — it's the simplest way to force you to handle effective dating instead of hardcoding. If your engine doesn't return 16% for
+  a German sale dated 2020-09-15, your date logic is wrong.
+  EU member states (for routing rule classification): treat at minimum DK, DE, FR, NL, SE, IT, ES, PL, IE, BE as EU. Everything else is non-EU. Hardcoding a list is fine.
+  4. Outputs
+  The engine returns a TaxBreakdown per sale containing:
+  ┌────────────────────────┬───────────────────────────────────────────────────────────────────────────┐
+  │         Field          │                                   Type                                    │
+  ├────────────────────────┼───────────────────────────────────────────────────────────────────────────┤
+  │ NetAmount              │ Money                                                                     │
+  ├────────────────────────┼───────────────────────────────────────────────────────────────────────────┤
+  │ VatRate                │ decimal (the percentage actually applied)                                 │
+  ├────────────────────────┼───────────────────────────────────────────────────────────────────────────┤
+  │ VatAmount              │ Money                                                                     │
+  ├────────────────────────┼───────────────────────────────────────────────────────────────────────────┤
+  │ GrossAmount            │ Money (net + VAT)                                                         │
+  ├────────────────────────┼───────────────────────────────────────────────────────────────────────────┤
+  │ Scheme                 │ enum or string identifying which rule fired (Exempt, ReverseCharge, etc.) │
+  ├────────────────────────┼───────────────────────────────────────────────────────────────────────────┤
+  │ RateAppliedFromCountry │ string (which country's rate was used — relevant for OSS)                 │
+  ├────────────────────────┼───────────────────────────────────────────────────────────────────────────┤
+  │ Explanation            │ short human-readable string for the UI/debugging                          │
+  └────────────────────────┴───────────────────────────────────────────────────────────────────────────┘
+  Also expose a ReportTaxBreakdown aggregating per-report:
+  - Total net, total VAT, total gross
+  - Subtotals per scheme (e.g., "€12,000 reverse charge", "€5,000 standard rate at 25%")
+  5. Non-functional requirements
+  These are the ones that actually pressure your design — pay attention to them:
+  1. Adding a new country must require zero code changes — only data (rate table rows + EU membership list, which can also be data). Test yourself: pretend Norway joins your
+  supported list. If you'd touch a .cs file other than the migration, your design has leaked.
+  2. Adding a new scheme should be additive — e.g., suppose you later add a "margin scheme" for second-hand goods. You should be able to add one new class implementing your
+  scheme interface and register it in the routing pipeline, without touching existing schemes.
+  3. The calculator must be testable without a database. This is non-negotiable. If your unit test for the engine needs a DbContext, your dependencies are wrong.
+  4. Deterministic and idempotent. Same inputs → same output. Recalculating the same report twice produces the same numbers.
+  5. Money handling — define a consistent rounding strategy (recommend MidpointRounding.ToEven aka banker's rounding, which is the EU standard for VAT) and apply it once at
+  the end, not after every operation.
+  6. Currency — model it, even if you only support EUR in v1. A Money(amount, currency) type that throws when you add EUR to USD is the lesson.
+  6. Worked examples (use these as your test cases)
+  ┌─────┬────────┬────────────┬─────────┬──────┬───────────────────┬────────┬─────────────────────────────────┬───────────────────────────────────────────────────────────┐
+  │  #  │ Seller │   Buyer    │ Buyer   │ VAT# │     Category      │ Amount │              Date               │                         Expected                          │
+  │     │        │  country   │  type   │      │                   │        │                                 │                                                           │
+  ├─────┼────────┼────────────┼─────────┼──────┼───────────────────┼────────┼─────────────────────────────────┼───────────────────────────────────────────────────────────┤
+  │ 1   │ DK     │ DK         │ B2C     │ —    │ Standard          │ €1,000 │ 2024-03-01                      │ 25% standard, VAT €250                                    │
+  ├─────┼────────┼────────────┼─────────┼──────┼───────────────────┼────────┼─────────────────────────────────┼───────────────────────────────────────────────────────────┤
+  │ 2   │ DE     │ DE         │ B2B     │ yes  │ Books             │ €1,000 │ 2024-03-01                      │ 7% reduced, VAT €70                                       │
+  ├─────┼────────┼────────────┼─────────┼──────┼───────────────────┼────────┼─────────────────────────────────┼───────────────────────────────────────────────────────────┤
+  │ 3   │ DE     │ DE         │ B2B     │ yes  │ Books             │ €1,000 │ 2020-09-15                      │ 5% reduced (COVID rate), VAT €50                          │
+  ├─────┼────────┼────────────┼─────────┼──────┼───────────────────┼────────┼─────────────────────────────────┼───────────────────────────────────────────────────────────┤
+  │ 4   │ DK     │ DE         │ B2B     │ yes  │ Standard          │ €1,000 │ 2024-03-01                      │ 0% reverse charge, VAT €0, scheme ReverseCharge           │
+  ├─────┼────────┼────────────┼─────────┼──────┼───────────────────┼────────┼─────────────────────────────────┼───────────────────────────────────────────────────────────┤
+  │ 5   │ DK     │ US         │ B2C     │ —    │ Standard          │ €1,000 │ 2024-03-01                      │ 0% export, scheme ZeroRated                               │
+  ├─────┼────────┼────────────┼─────────┼──────┼───────────────────┼────────┼─────────────────────────────────┼───────────────────────────────────────────────────────────┤
+  │ 6   │ DK     │ DE         │ B2C     │ —    │ Standard          │ €1,000 │ 2024-03-01, seller YTD          │ 25% DK standard (under threshold)                         │
+  │     │        │            │         │      │                   │        │ cross-border B2C = €5,000       │                                                           │
+  ├─────┼────────┼────────────┼─────────┼──────┼───────────────────┼────────┼─────────────────────────────────┼───────────────────────────────────────────────────────────┤
+  │ 7   │ DK     │ DE         │ B2C     │ —    │ Standard          │ €1,000 │ 2024-03-01, seller YTD          │ 19% DE standard (OSS), RateAppliedFromCountry = DE        │
+  │     │        │            │         │      │                   │        │ cross-border B2C = €15,000      │                                                           │
+  ├─────┼────────┼────────────┼─────────┼──────┼───────────────────┼────────┼─────────────────────────────────┼───────────────────────────────────────────────────────────┤
+  │ 8   │ DK     │ DK         │ B2B     │ yes  │ FinancialServices │ €1,000 │ 2024-03-01                      │ Exempt, VAT €0                                            │
+  ├─────┼────────┼────────────┼─────────┼──────┼───────────────────┼────────┼─────────────────────────────────┼───────────────────────────────────────────────────────────┤
+  │ 9   │ DE     │ FR         │ B2B     │ no   │ Standard          │ €1,000 │ 2024-03-01                      │ NOT reverse charge (no valid VAT#); falls through to OSS  │
+  │     │        │            │         │      │                   │        │                                 │ / standard depending on threshold                         │
+  └─────┴────────┴────────────┴─────────┴──────┴───────────────────┴────────┴─────────────────────────────────┴───────────────────────────────────────────────────────────┘
+  If your engine produces the right answer on all 9, your routing is sound.
+  7. Suggested phasing
+  Don't try to land all of this at once. Suggested order:
+  1. Money + VatRate value objects, single-country standard rate calculator. Get the plumbing right first.
+  2. Rate lookup repo + effective dating. Now examples 1, 2, 3 pass.
+  3. Scheme strategies + routing pipeline for Exempt, ZeroRated, ReverseCharge, Reduced, Standard. Examples 1–5, 8, 9 pass.
+  4. OSS threshold logic (the stateful one). Examples 6, 7 pass.
+  5. Wire into VatReportService.GetByIdAsync and surface the breakdown in the API response and the frontend.
+  8. Out of scope (resist scope creep)
+  - Margin schemes, flat-rate schemes, OSS registration mechanics
+  - Distance-selling place-of-supply rules for digital services
+  - Multi-currency conversion (model Money but only support EUR)
+  - Refunds / credit notes
+  - VAT-number validation against VIES (just trust the bool)
+  - Timezone handling (use DateOnly)
+  9. Definition of done
+  - All 9 worked examples pass as unit tests
+  - Adding a new country is data-only (prove it by adding Norway: NO standard 25%, no reduced — non-EU, so it'd be export from EU sellers)
+  - TaxBreakdown is rendered in the frontend report view, grouped by scheme
+  - Engine has no DbContext dependency in its unit tests (uses an injected lookup interface)
+  - Old inline calculation in VatReportService is removed
+  ---
+  One piece of advice before you start: resist the temptation to design everything up front. Build phase 1 with the simplest thing that works, then let phase 2's requirements
+  force you to refactor. The pain of refactoring is what teaches the principles — if you front-load the architecture, you'll just be cargo-culting patterns from blogs.
+  Want me to leave it here or also sketch suggested project structure (folders, where the engine lives vs domain vs infrastructure)?

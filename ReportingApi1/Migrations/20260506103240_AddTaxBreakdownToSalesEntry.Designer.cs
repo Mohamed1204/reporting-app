@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ReportingApi1.Data;
 
@@ -11,9 +12,11 @@ using ReportingApi1.Data;
 namespace ReportingApi1.Migrations
 {
     [DbContext(typeof(VatReportingContext))]
-    partial class VatReportingContextModelSnapshot : ModelSnapshot
+    [Migration("20260506103240_AddTaxBreakdownToSalesEntry")]
+    partial class AddTaxBreakdownToSalesEntry
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -51,45 +54,6 @@ namespace ReportingApi1.Migrations
                     b.HasIndex("Name");
 
                     b.ToTable("Companies");
-                });
-
-            modelBuilder.Entity("ReportingApi1.Entities.Payment", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<decimal>("Amount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("nvarchar(3)");
-
-                    b.Property<string>("ExternalReference")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("rowversion");
-
-                    b.Property<int>("VatReportId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("VatReportId", "ExternalReference")
-                        .IsUnique();
-
-                    b.ToTable("Payments");
                 });
 
             modelBuilder.Entity("ReportingApi1.Entities.Product", b =>
@@ -324,17 +288,7 @@ namespace ReportingApi1.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<decimal?>("AmountDue")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<int>("CompanyId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("DueDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("PaymentStatus")
                         .HasColumnType("int");
 
                     b.Property<int>("ReportingPeriodId")
@@ -345,10 +299,6 @@ namespace ReportingApi1.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
-
-                    b.Property<string>("SettlementCurrency")
-                        .HasMaxLength(3)
-                        .HasColumnType("nvarchar(3)");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -364,17 +314,6 @@ namespace ReportingApi1.Migrations
                         .IsUnique();
 
                     b.ToTable("VatReports");
-                });
-
-            modelBuilder.Entity("ReportingApi1.Entities.Payment", b =>
-                {
-                    b.HasOne("ReportingApi1.Entities.VatReport", "VatReport")
-                        .WithMany("Payments")
-                        .HasForeignKey("VatReportId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("VatReport");
                 });
 
             modelBuilder.Entity("ReportingApi1.Entities.RefreshToken", b =>
@@ -469,8 +408,6 @@ namespace ReportingApi1.Migrations
 
             modelBuilder.Entity("ReportingApi1.Entities.VatReport", b =>
                 {
-                    b.Navigation("Payments");
-
                     b.Navigation("SalesEntries");
                 });
 #pragma warning restore 612, 618

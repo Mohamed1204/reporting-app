@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ReportingApi1.Entities;
+using System.Diagnostics.Metrics;
+using System.Text.RegularExpressions;
 
 namespace ReportingApi1.Data;
 
@@ -17,6 +19,7 @@ public class VatReportingContext : DbContext
     public DbSet<Product> Products { get; set; }
     public DbSet<User> Users { get; set; }
     public DbSet<RefreshToken> RefreshTokens { get; set; }
+    public DbSet<Payment> Payments { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -51,6 +54,9 @@ public class VatReportingContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.SubmittedAt).IsRequired();
             entity.Property(e => e.Status).IsRequired();
+            entity.Property(e => e.AmountDue).HasPrecision(18, 2);
+            entity.Property(e => e.SettlementCurrency).HasMaxLength(3);
+            entity.Property(e => e.PaymentStatus).IsRequired();
             entity.Property(e => e.RowVersion).IsRowVersion();
 
             entity.HasOne(e => e.Company)
@@ -70,17 +76,23 @@ public class VatReportingContext : DbContext
         modelBuilder.Entity<SalesEntry>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.Country).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.BuyerCountry).IsRequired().HasMaxLength(100);
             entity.Property(e => e.Amount).IsRequired().HasPrecision(18, 2);
-            entity.Property(e => e.VatRate).IsRequired().HasPrecision(5, 2);
             entity.Property(e => e.RowVersion).IsRowVersion();
+
+            entity.OwnsOne(e => e.Breakdown, b =>
+            {
+                b.Property(x => x.VatAmount).HasPrecision(18, 2);
+                b.Property(x => x.VatRate).HasPrecision(5, 2);
+                b.Property(x => x.Scheme).HasConversion<string>().HasMaxLength(20);
+            });
 
             entity.HasOne(e => e.VatReport)
                 .WithMany(vr => vr.SalesEntries)
                 .HasForeignKey(e => e.VatReportId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasIndex(e => new { e.VatReportId, e.Country }).IsUnique();
+            entity.HasIndex(e => new { e.VatReportId, e.BuyerCountry }).IsUnique();
         });
 
         modelBuilder.Entity<Product>(entity =>
@@ -124,6 +136,17 @@ public class VatReportingContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Payment>(entity=>{
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Amount).IsRequired().HasPrecision(18, 2);
+            entity.Property(e => e.Currency).IsRequired().HasMaxLength(3);
+            entity.Property(e => e.ExternalReference).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.RowVersion).IsRowVersion();
+            entity.HasOne(e => e.VatReport).WithMany(vr => vr.Payments).HasForeignKey(e => e.VatReportId).OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(e => new { e.VatReportId, e.ExternalReference }).IsUnique();
         });
     }
 }

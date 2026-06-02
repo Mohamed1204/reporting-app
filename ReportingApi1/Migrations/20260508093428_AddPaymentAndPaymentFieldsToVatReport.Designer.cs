@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ReportingApi1.Data;
 
@@ -11,9 +12,11 @@ using ReportingApi1.Data;
 namespace ReportingApi1.Migrations
 {
     [DbContext(typeof(VatReportingContext))]
-    partial class VatReportingContextModelSnapshot : ModelSnapshot
+    [Migration("20260508093428_AddPaymentAndPaymentFieldsToVatReport")]
+    partial class AddPaymentAndPaymentFieldsToVatReport
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

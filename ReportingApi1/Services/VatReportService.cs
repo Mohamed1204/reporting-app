@@ -23,11 +23,16 @@ public class VatReportService : IVatReportService
 {
     private readonly VatReportingContext _context;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IVatCalculator _vatCalculator;
 
-    public VatReportService(VatReportingContext context, ICurrentUserService currentUserService)
+    public VatReportService(
+        VatReportingContext context,
+        ICurrentUserService currentUserService,
+        IVatCalculator vatCalculator)
     {
         _context = context;
         _currentUserService = currentUserService;
+        _vatCalculator = vatCalculator;
     }
 
     public async Task<PagedResult<VatReportListItemDto>> GetAllAsync(int page, int pageSize, int? companyId = null, ReportStatus? status = null, string? sortBy = null, string? sortDir = null)
@@ -61,7 +66,7 @@ public class VatReportService : IVatReportService
                 SubmittedAt = vr.SubmittedAt,
                 Status = vr.Status,
                 TotalAmount = vr.SalesEntries.Sum(se => se.Amount),
-                TotalVat = vr.SalesEntries.Sum(se => se.Amount * se.VatRate / 100),
+                TotalVat = vr.SalesEntries.Sum(se => se.Breakdown != null ? se.Breakdown.VatAmount : 0m),
                 RowVersion = vr.RowVersion
             })
             .ToListAsync();
@@ -84,7 +89,15 @@ public class VatReportService : IVatReportService
             .Include(vr => vr.SalesEntries)
             .FirstOrDefaultAsync(vr => vr.Id == id);
 
-        return vatReport == null ? null : MapToDto(vatReport);
+        if (vatReport == null)
+            return null;
+
+        // Object-level authorization: a non-admin user may only read their own company's report.
+        // Return null (-> 404) rather than 403 so report existence isn't disclosed cross-tenant.
+        if (!_currentUserService.IsAdmin && vatReport.CompanyId != _currentUserService.CompanyId)
+            return null;
+
+        return MapToDto(vatReport);
     }
 
     public async Task<List<VatReportDto>> GetByCompanyAsync(int companyId)
@@ -111,12 +124,7 @@ public class VatReportService : IVatReportService
             CompanyId = dto.CompanyId,
             ReportingPeriodId = dto.ReportingPeriodId,
             Status = ReportStatus.Draft,
-            SalesEntries = dto.SalesEntries.Select(se => new SalesEntry
-            {
-                Country = CountryCodes.Normalize(se.Country),
-                Amount = se.Amount,
-                VatRate = se.VatRate
-            }).ToList()
+            SalesEntries = dto.SalesEntries.Select(BuildSalesEntry).ToList()
         };
 
         _context.VatReports.Add(vatReport);
@@ -137,13 +145,7 @@ public class VatReportService : IVatReportService
 
         _context.SalesEntries.RemoveRange(vatReport.SalesEntries);
 
-        vatReport.SalesEntries = dto.SalesEntries.Select(se => new SalesEntry
-        {
-            VatReportId = vatReport.Id,
-            Country = CountryCodes.Normalize(se.Country),
-            Amount = se.Amount,
-            VatRate = se.VatRate
-        }).ToList();
+        vatReport.SalesEntries = dto.SalesEntries.Select(BuildSalesEntry).ToList();
 
         _context.Entry(vatReport).Property(vr => vr.RowVersion).OriginalValue = dto.RowVersion;
 
@@ -179,21 +181,13 @@ public class VatReportService : IVatReportService
 
         vatReport.Status = ReportStatus.Submitted;
         vatReport.SubmittedAt = DateTime.UtcNow;
-        vatReport.SalesEntries = dto.SalesEntries.Select(se => new SalesEntry
-        {
-            Country = CountryCodes.Normalize(se.Country),
-            Amount = se.Amount,
-            VatRate = se.VatRate
-        }).ToList();
-
+        vatReport.SalesEntries = dto.SalesEntries.Select(BuildSalesEntry).ToList();
 
         _context.Entry(vatReport).Property(vr => vr.RowVersion).OriginalValue = dto.RowVersion;
 
         await _context.SaveChangesAsync();
         return (await GetByIdAsync(vatReport.Id))!;
     }
-
-
 
     public async Task<VatReportDto> SaveAsync(UpdateVatReportDto dto)
     {
@@ -212,13 +206,7 @@ public class VatReportService : IVatReportService
 
         _context.SalesEntries.RemoveRange(vatReport.SalesEntries);
 
-        vatReport.SalesEntries = dto.SalesEntries.Select(se => new SalesEntry
-        {
-            VatReportId = vatReport.Id,
-            Country = CountryCodes.Normalize(se.Country),
-            Amount = se.Amount,
-            VatRate = se.VatRate
-        }).ToList();
+        vatReport.SalesEntries = dto.SalesEntries.Select(BuildSalesEntry).ToList();
 
         vatReport.Status = ReportStatus.Draft;
 
@@ -226,6 +214,21 @@ public class VatReportService : IVatReportService
 
         await _context.SaveChangesAsync();
         return (await GetByIdAsync(vatReport.Id))!;
+    }
+
+    private SalesEntry BuildSalesEntry(CreateSalesEntryDto se)
+    {
+        var entry = new SalesEntry
+        {
+            BuyerCountry = CountryCodes.Normalize(se.BuyerCountry),
+            Amount = se.Amount,
+            BuyerType = se.BuyerType,
+            productCategory = se.ProductCategory,
+            BuyerHasValidVatNumber = se.BuyerHasValidVatNumber,
+            SaleDate = se.SaleDate
+        };
+        entry.Breakdown = _vatCalculator.Calculate(entry);
+        return entry;
     }
 
     private static IOrderedQueryable<VatReport> ApplySort(IQueryable<VatReport> query, string? sortBy, string? sortDir)
@@ -249,10 +252,13 @@ public class VatReportService : IVatReportService
         var salesEntries = vatReport.SalesEntries.Select(se => new SalesEntryDto
         {
             Id = se.Id,
-            Country = se.Country,
+            BuyerCountry = se.BuyerCountry,
             Amount = se.Amount,
-            VatRate = se.VatRate,
-            VatAmount = se.Amount * se.VatRate / 100
+            BuyerType = se.BuyerType,
+            ProductCategory = se.productCategory,
+            BuyerHasValidVatNumber = se.BuyerHasValidVatNumber,
+            SaleDate = se.SaleDate,
+            Breakdown = se.Breakdown
         }).ToList();
 
         return new VatReportDto
@@ -267,7 +273,7 @@ public class VatReportService : IVatReportService
             Status = vatReport.Status,
             SalesEntries = salesEntries,
             TotalAmount = salesEntries.Sum(se => se.Amount),
-            TotalVat = salesEntries.Sum(se => se.VatAmount),
+            TotalVat = salesEntries.Sum(se => se.Breakdown?.VatAmount ?? 0m),
             RowVersion = vatReport.RowVersion
         };
     }

@@ -7,7 +7,13 @@ export interface OpenPeriod {
   name: string
   startDate: string
   endDate: string
-  status: 'open' | 'closing_soon'
+  reportStatus: number
+}
+
+const REPORT_STATUS_LABELS = ['Draft', 'Submitted', 'Approved', 'Rejected']
+
+export function reportStatusLabel(status: number): string {
+  return REPORT_STATUS_LABELS[status] ?? 'Unknown'
 }
 
 export interface VatReport {
@@ -39,12 +45,31 @@ export interface VatReportListItem {
   rowVersion: string
 }
 
+export type BuyerType = 'B2B' | 'B2C'
+
+export type ProductCategory =
+  | 'Standard'
+  | 'Food'
+  | 'Books'
+  | 'Medicine'
+  | 'FinancialServices'
+  | 'Education'
+
+export interface VatBreakdown {
+  vatAmount: number
+  vatRate: number
+  scheme: number
+}
+
 export interface VatReportSalesEntry {
   id: number
-  country: string
+  buyerCountry: string
   amount: number
-  vatRate: number
-  vatAmount: number
+  breakdown?: VatBreakdown
+  buyerType?: BuyerType
+  productCategory?: ProductCategory
+  buyerHasValidVatNumber?: boolean
+  saleDate?: string
 }
 
 export interface PagedResult<T> {
@@ -84,11 +109,6 @@ export const VAT_REPORTS_ENDPOINT = buildVatReportsEndpoint({
   sortDir: 'asc',
 })
 
-const mapVatReportStatusToPeriodStatus = (status: number): OpenPeriod['status'] => {
-  // Treat draft/in-progress as open; all other states as non-open in this UI.
-  return status === 0 ? 'open' : 'closing_soon'
-}
-
 export const mapVatReportsToOpenPeriods = (
   reports: Array<VatReport | VatReportListItem>,
 ): OpenPeriod[] =>
@@ -98,7 +118,7 @@ export const mapVatReportsToOpenPeriods = (
     name: `Period ${report.reportingPeriodId}`,
     startDate: report.startDate,
     endDate: report.endDate,
-    status: mapVatReportStatusToPeriodStatus(report.status),
+    reportStatus: report.status,
   }))
 
 export const usePeriodsStore = defineStore('periods', () => {

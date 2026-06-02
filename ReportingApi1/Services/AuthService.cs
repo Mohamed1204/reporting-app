@@ -65,7 +65,9 @@ namespace ReportingApi1.Services
 
         public async Task<AuthResult?> LoginAsync(LoginUserDto dto)
         {
-            var user = await _context.Users.SingleOrDefaultAsync(u => u.UserName == dto.UserName);
+            var user = await _context.Users
+                .Include(u => u.Company)
+                .SingleOrDefaultAsync(u => u.UserName == dto.UserName);
             if (user == null) return null;
             if (!VerifyPassword(user.PasswordHash, dto.Password)) return null;
 
@@ -88,7 +90,7 @@ namespace ReportingApi1.Services
         {
             var hash = HashToken(rawRefreshToken);
             var existing = await _context.RefreshTokens
-                .Include(rt => rt.User)
+                .Include(rt => rt.User).ThenInclude(u => u.Company)
                 .FirstOrDefaultAsync(rt => rt.TokenHash == hash);
 
             if (existing == null) return null;
@@ -140,7 +142,9 @@ namespace ReportingApi1.Services
         private AuthResponseDto BuildResponse(User user) => new()
         {
             Token = GenerateAccessToken(user),
-            Role = user.Role.ToString()
+            Role = user.Role.ToString(),
+            UserName = user.UserName,
+            CompanyName = user.Company?.Name ?? string.Empty
         };
 
         private string GenerateAccessToken(User user)
@@ -152,6 +156,7 @@ namespace ReportingApi1.Services
             {
                 new Claim("userId", user.Id.ToString()),
                 new Claim("userName", user.UserName),
+                new Claim(ClaimTypes.Name, user.UserName),
                 new Claim("companyId", user.CompanyId.ToString()),
                 new Claim(ClaimTypes.Role, user.Role.ToString())
             };

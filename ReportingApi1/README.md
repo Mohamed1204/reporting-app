@@ -1,190 +1,241 @@
-# VAT Reporting System - Backend API
+# Reporting App — DK OSS Intake Portal
 
-A .NET 8 Web API for managing VAT reports, built as a practice project for learning EF Core, clean architecture, and concurrency handling.
+A Denmark-based OSS (One Stop Shop) intake portal. Models the SKAT-side workflow: EU-registered companies log in, declare cross-border B2C sales per destination country, and the system calculates the destination-country VAT each filer owes.
 
-## 🏗️ Architecture
+This is a learning project for production-shape ASP.NET Core / Vue patterns — not a real tax filing system.
+
+## Stack
+
+| Layer      | Technology                                                        |
+|------------|-------------------------------------------------------------------|
+| Backend    | ASP.NET Core (.NET 10), EF Core                                    |
+| Database   | SQL Server Express (`VatReportingDb` on `localhost\SQLEXPRESS`)    |
+| Auth       | JWT bearer (HS256), refresh-token cookie                           |
+| Validation | FluentValidation                                                   |
+| Logging    | Serilog                                                            |
+| Frontend   | Vue 3 + TypeScript, Pinia, Vue Router, Vite, Vitest                |
+
+## Repository Layout
 
 ```
-ReportingApi1/
-├── Entities/               # Domain models (DB entities)
-│   ├── Company.cs
-│   ├── ReportingPeriod.cs
-│   ├── VatReport.cs
-│   └── SalesEntry.cs
-├── Data/                   # DbContext
-│   └── VatReportingContext.cs
-├── DTOs/                   # Data Transfer Objects
-│   ├── CompanyDto.cs
-│   ├── ReportingPeriodDto.cs
-│   ├── VatReportDto.cs
-│   └── SalesEntryDto.cs
-├── Services/               # Business logic
-│   ├── CompanyService.cs
-│   ├── ReportingPeriodService.cs
-│   └── VatReportService.cs
-└── Controllers/            # API endpoints
-    ├── CompaniesController.cs
-    ├── ReportingPeriodsController.cs
-    └── VatReportsController.cs
+reporting-app/
+├── ReportingApi1/                  # Backend
+│   ├── Controllers/                # API endpoints
+│   ├── Services/                   # Business logic, VAT engine
+│   ├── Repositories/               # Swappable data sources (rates)
+│   ├── Entities/                   # EF entity models
+│   ├── DTOs/                       # Request/response shapes
+│   ├── Data/                       # DbContext
+│   ├── Migrations/                 # EF migrations
+│   ├── Validation/                 # FluentValidation validators + CountryCodes
+│   ├── Infrastructure/             # JWT config, global exception handler, dev seed
+│   └── Program.cs                  # DI registration, middleware pipeline
+├── ReportingApi1.Tests/            # Backend test project (xUnit)
+└── frontend/                       # Vue 3 app
+    └── src/
+        ├── views/
+        ├── components/
+        ├── stores/
+        └── router/
 ```
 
-## 🎯 Domain Model
+## Domain Model
 
-### Company
-- Has many VAT reports
-- Properties: Name, Country
+### Company (Filer)
+- An EU-registered business that submits OSS reports
+- Properties: `Name`, `Country`, `RowVersion`
+
+### User
+- A login attached to a Company
+- `UserRole`: `Admin` (tax authority side) or `User` (company-side filer)
 
 ### ReportingPeriod
-- Represents a time period (e.g., Q1 2026)
-- Properties: StartDate, EndDate, Status (Open/Closed/Locked)
-
-### VatReport
-- Belongs to one Company and one ReportingPeriod
-- Contains multiple SalesEntries
-- Properties: SubmittedAt, Status (Draft/Submitted/Approved/Rejected)
-- **Constraint**: One report per company per period (unique index)
+- An OSS filing window (typically a quarter)
+- Properties: `StartDate`, `EndDate`, `Status`
 
 ### SalesEntry
-- Belongs to one VatReport
-- Properties: Country, Amount, VatRate
-- **VatAmount is calculated** (not stored): `Amount * VatRate / 100`
+- One cross-border B2C sale inside a VAT report
+- Key fields: `BuyerCountry` (destination, ISO-3166 alpha-2), `Amount`, `Currency`, `ProductCategory`, `SaleDate`, `BuyerType`, `BuyerHasValidVatNumber`, `SellerCountry`
+- Scoped to OSS-applicable sales only — domestic, B2B-with-VAT-number, non-EU, and exempt-category sales are filtered out at the validation boundary
 
-## 🔐 Concurrency Handling
+### VatReport
+- One filer's submission for one period
+- Aggregates SalesEntries; one report per `(Company, ReportingPeriod)` (unique index)
+- Lifecycle: `Draft → Submitted → ...` (Approved/Rejected to be wired)
 
-All entities have `RowVersion` timestamp for optimistic concurrency control:
-- SQL Server uses `rowversion` type
-- Updates that conflict return 409 Conflict with helpful error message
-- Prevents silent data overwrites when multiple users edit the same record
+### Product
+- Items with categories that drive VAT rate selection
+- Reduced-rate eligible: Food, Books, Medicine
+- Exempt (out of OSS scope, rejected at validation): FinancialServices, Education
 
-## 📚 Key Features Implemented
+## VAT Calculation Engine
 
-✅ **EF Core**
-- Entity relationships (1-to-many, foreign keys)
-- Fluent API configuration
-- Migrations
-- Optimistic concurrency with RowVersion
+The heart of the system. **This part of the codebase is in active refactor — what's described below is the target shape, not all of it exists yet.** See *Current state* below for what's actually built.
 
-✅ **Clean Architecture**
-- Separation of concerns: Entities → Services → Controllers
-- DTOs separate from entities
-- Interface-based services for testability
+### Goal: a pure domain function
 
-✅ **Calculated Fields**
-- `VatAmount` calculated in DTOs
-- `TotalAmount` and `TotalVat` aggregated in service layer
-- Not stored in database (follows DRY principle)
+```
+TaxBreakdown Calculate(VatCalculationRequest req, VatCalculationContext ctx)
+```
 
-✅ **API Best Practices**
-- RESTful endpoints
-- Proper HTTP status codes
-- Error handling with meaningful messages
-- CORS configured for frontend
+- **Pure** — synchronous, deterministic, no I/O, no `DbContext`, no `DateTime.UtcNow`
+- **Unit-testable in isolation** — no host bootstrap, no DI container, no in-memory DB
+- Same `(req, ctx)` always returns the same `TaxBreakdown`
 
-## 🚀 Getting Started
+### Why pure?
+
+VAT rules are testable, frozen, deterministic logic. Coupling them to EF or HTTP makes every test slow and every async-cascade painful. Keeping the engine pure means rule changes touch only the engine, and rate-source changes touch only the repository.
+
+### Architecture (target)
+
+```
+Controllers
+   ↓
+Services/VatReportService              ← orchestration: loads sales, fetches rates,
+   │                                      calls engine, persists, returns DTO
+   │
+   ├─→ Repositories/IVatRateRepository ← swappable: EF today, SKAT API later
+   │      returns: RateBook (immutable rate snapshot)
+   │
+   └─→ Services/IVatCalculator         ← pure engine
+          (req, ctx) → TaxBreakdown
+```
+
+### Concepts
+
+- **`VatCalculationRequest`** — small immutable record with what the engine needs (BuyerCountry, Category, Net, SaleDate). Decoupled from the EF `SalesEntry` entity so the engine doesn't depend on storage shape.
+- **`VatCalculationContext`** — carries the rate snapshot (and later: `AsOf` date)
+- **`RateBook`** — frozen snapshot of effective-dated rate rows. `GetRate(country, category, date)` does a category fallback: reduced row if a category-specific row exists for the date, otherwise the country's standard row.
+- **`TaxBreakdown`** — return shape: Net, Rate, VatAmount, Gross, Scheme, RateAppliedFromCountry, Explanation
+- **`VatScheme`** — enum (currently just `Oss`; legacy zero-rated/reverse-charge/exempt schemes are filtered out at validation)
+- **`VatRate`** — value object so percentage-vs-multiplier ambiguity becomes a compile error (deferred until ambiguity bites)
+
+### Current state
+
+- `Services/VatCalculationEngine.cs` exists but doesn't compile — references `TaxBreakdown`, `VatScheme`, `VatCalculationContext` which haven't been built yet
+- `Repositories/VatRateRepository.cs` is a stub returning `0.5m` for any input
+- The engine takes the EF `SalesEntry` entity directly (target: `VatCalculationRequest`)
+- Whether the repository is injected into the engine vs the orchestrator is undecided
+- `VatReportService` still computes VAT inline as `Amount * VatRate / 100` at lines 64 and 255
+
+### Out of OSS scope (rejected at validation)
+
+- Domestic sales (`BuyerCountry == SellerCountry`)
+- B2B with valid VAT number (reverse charge — handled by buyer)
+- Non-EU destinations (zero-rated export)
+- Exempt categories (FinancialServices, Education)
+
+These don't reach the engine. The engine assumes a valid OSS sale and computes the destination-country rate.
+
+## Concurrency
+
+All entities have `RowVersion` (SQL Server `rowversion`). EF maps it as a concurrency token:
+- First write wins
+- Conflicting writes raise `DbUpdateConcurrencyException`, surfaced as HTTP 409 by `Infrastructure/GlobalExceptionHandler`
+- Frontend reads `RowVersion` from GET responses and includes it in PUTs
+
+## Auth
+
+- JWT bearer (HS256); settings under `JwtSettings` in `appsettings.json`
+- `[Authorize]` applied globally via a filter in `Program.cs` — actions opt out with `[AllowAnonymous]`
+- Two roles: `Admin` (tax authority side) and `User` (company-side filer)
+- Login issues an access token; refresh token sent as HttpOnly cookie via `POST /api/auth/refresh`
+- Logout clears the refresh cookie
+
+## Validation
+
+- FluentValidation, auto-registered from the `ReportingApi1` assembly
+- Validators in `Validation/` (e.g. `CreateVatReportValidator`)
+- Country codes validated via `[ValidCountryCode]` against `Validation/CountryCodes` (EU-27 + EEA + GB/CH)
+
+## Logging
+
+- Serilog, configured via the `Serilog` section of `appsettings.json`
+- `app.UseSerilogRequestLogging()` logs every HTTP request
+
+## Getting Started
 
 ### Prerequisites
-- .NET 8 SDK
-- SQL Server Express (localhost\SQLEXPRESS)
+- .NET 10 SDK
+- SQL Server Express (`localhost\SQLEXPRESS`)
 
-### Setup
+### Backend (from `ReportingApi1/`)
 
-1. **Restore packages**
-   ```bash
-   dotnet restore
-   ```
+```bash
+dotnet restore
+dotnet ef database update          # apply migrations
+dotnet run                          # see launchSettings.json for ports
+```
 
-2. **Database is already created**, but if you need to recreate:
-   ```bash
-   dotnet ef database drop
-   dotnet ef database update
-   ```
+Swagger UI at `/swagger`. Includes a `Bearer` security scheme — paste a JWT to call protected endpoints.
 
-3. **Run the API**
-   ```bash
-   dotnet run
-   ```
+### Frontend (from `frontend/`)
 
-4. **Access Swagger UI**
-   - HTTP: http://localhost:5247/swagger
-   - HTTPS: https://localhost:7033/swagger
+```bash
+npm install
+npm run dev                         # http://localhost:5173
+npm run type-check                  # vue-tsc
+npm run test:unit                   # Vitest
+```
 
-## 🧪 API Endpoints
+### Migrations
 
-### Companies
-- `GET /api/companies` - Get all companies
-- `GET /api/companies/{id}` - Get company by ID
-- `POST /api/companies` - Create new company
-- `PUT /api/companies/{id}` - Update company
-- `DELETE /api/companies/{id}` - Delete company
+```bash
+dotnet ef migrations add <Name>
+dotnet ef database update
+```
 
-### Reporting Periods
-- `GET /api/reportingperiods` - Get all periods
-- `GET /api/reportingperiods/{id}` - Get period by ID
-- `POST /api/reportingperiods` - Create new period
-- `DELETE /api/reportingperiods/{id}` - Delete period
+## API Endpoints
 
-### VAT Reports
-- `GET /api/vatreports` - Get all reports
-- `GET /api/vatreports/{id}` - Get report by ID
-- `GET /api/vatreports/company/{companyId}` - Get reports by company
-- `POST /api/vatreports` - Create new report
-- `PUT /api/vatreports/{id}` - Update report
-- `DELETE /api/vatreports/{id}` - Delete report
+### Auth (`/api/auth`)
+- `POST /login` — exchange credentials for an access token + refresh cookie
+- `POST /register` — create a new user/company
+- `POST /refresh` — exchange refresh cookie for a new access token
+- `POST /logout` — clear refresh cookie
 
-## 📝 Example: Testing Concurrency
+### Companies (`/api/companies`)
+- `GET /` — list (filter with `?name=`)
+- `GET /{id}` — get one
+- `POST /` — create
+- `PUT /{id}` — update
+- `DELETE /{id}` — delete
 
-1. Create a company via POST `/api/companies`:
-   ```json
-   {
-     "name": "Acme Corp",
-     "country": "Netherlands"
-   }
-   ```
+### Reporting Periods (`/api/reportingperiods`)
+- `GET /` — list
+- `GET /{id}` — get one
+- `POST /` — create
+- `DELETE /{id}` — delete
 
-2. Get the company (note the RowVersion in response)
+### VAT Reports (`/api/vatreports`)
+- `GET /` — paged list
+- `GET /{id}` — get one with sales entries
+- `POST /` — create *(Admin only)*
+- `PUT /` — update *(Admin only)*
+- `DELETE /{id}` — delete *(Admin only)*
+- `POST /save` — filer saves a draft
+- `POST /submit` — filer submits the report
 
-3. Try updating from two different clients with the same RowVersion
-   - First update succeeds
-   - Second update returns 409 Conflict
+### Sales Entries (`/api/salesentries`)
+- `DELETE /{id}` — remove one entry from a report
 
-## 🎓 Learning Points Covered
+### Products (`/api/products`)
+- `GET /` — list
+- `GET /{id}` — get one
 
-- [x] EF Core entity configuration
-- [x] Database relationships and constraints
-- [x] Migrations workflow
-- [x] Service layer pattern
-- [x] DTOs vs Entities separation
-- [x] Optimistic concurrency handling
-- [x] Calculated properties (not persisted)
-- [x] RESTful API design
-- [x] Error handling and status codes
-- [x] CORS configuration
+## Status / Known Gaps
 
-## 🔗 Frontend Integration
+- VAT calculation engine is mid-refactor — see *Current state* above
+- Effective-dated rate table not in DB yet; the rate repository is a stub
+- Filer-side summary view not built
+- Tax-authority redistribution view (per-destination-country totals across filers) not built
+- Filing lifecycle states beyond Draft/Submitted not enforced
+- `SalesEntry.productCategory` casing inconsistent with C# convention (should be `ProductCategory`)
+- Unique index on `(VatReportId, BuyerCountry)` will reject legal data once category/buyer-type vary — needs to be widened or removed
 
-CORS is configured to accept requests from:
+## Frontend Integration
+
+CORS allows:
 - `http://localhost:5173` (Vite default)
 - `http://localhost:3000` (Vue CLI default)
 
-## 📦 NuGet Packages
-
-- `Microsoft.EntityFrameworkCore.SqlServer` (8.0.11)
-- `Microsoft.EntityFrameworkCore.Tools` (8.0.11)
-- `Microsoft.EntityFrameworkCore.Design` (8.0.11)
-
-## 🗃️ Database Schema
-
-Tables created:
-- `Companies` (Id, Name, Country, RowVersion)
-- `ReportingPeriods` (Id, StartDate, EndDate, Status, RowVersion)
-- `VatReports` (Id, CompanyId, ReportingPeriodId, SubmittedAt, Status, RowVersion)
-- `SalesEntries` (Id, VatReportId, Country, Amount, VatRate, RowVersion)
-
-Indexes:
-- `Companies.Name`
-- `ReportingPeriods.(StartDate, EndDate)`
-- `VatReports.(CompanyId, ReportingPeriodId)` - UNIQUE
-
----
-
-**Built with .NET 8 as a learning project** 🚀
+Both with credentials (`AllowCredentials`) so the refresh cookie round-trips.

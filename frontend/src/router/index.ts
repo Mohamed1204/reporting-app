@@ -26,9 +26,12 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  if (to.name === 'auth') return true
-
   const authStore = useAuthStore(pinia)
+
+  if (to.name === 'auth') {
+    return authStore.isLoggedIn ? { name: 'home' } : true
+  }
+
   if (!authStore.isLoggedIn) {
     return { name: 'auth' }
   }

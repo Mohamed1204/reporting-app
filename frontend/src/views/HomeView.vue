@@ -7,6 +7,7 @@ import { storeToRefs } from 'pinia'
 import {
   VAT_REPORTS_ENDPOINT,
   mapVatReportsToOpenPeriods,
+  reportStatusLabel,
   usePeriodsStore,
   type OpenPeriod,
   type VatReportListItem,
@@ -61,8 +62,8 @@ const onSelectPeriod = async (period: OpenPeriod) => {
         type="button"
         @click="onSelectPeriod(period)"
       >
-        <span class="status" :class="period.status">
-          {{ period.status === 'closing_soon' ? 'Closing Soon' : 'Open' }}
+        <span class="status" :class="reportStatusLabel(period.reportStatus).toLowerCase()">
+          {{ reportStatusLabel(period.reportStatus) }}
         </span>
         <h2>{{ period.name }}</h2>
         <p>{{ formatDate(period.startDate) }} - {{ formatDate(period.endDate) }}</p>
@@ -148,16 +149,28 @@ const onSelectPeriod = async (period: OpenPeriod) => {
   border: 1px solid transparent;
 }
 
-.status.open {
+.status.draft {
+  background: #eef2f6;
+  color: #41607a;
+  border-color: #d1dae3;
+}
+
+.status.submitted {
+  background: #e6f1ff;
+  color: #1e4f9b;
+  border-color: #bcd4f5;
+}
+
+.status.approved {
   background: #ebfff7;
   color: #156e52;
   border-color: #c6f1e2;
 }
 
-.status.closing_soon {
-  background: #fff4eb;
-  color: #9a4d0b;
-  border-color: #ffd8b7;
+.status.rejected {
+  background: #ffe6e0;
+  color: #a93023;
+  border-color: #f7c6bd;
 }
 
 .picked {

@@ -11,10 +11,16 @@ namespace ReportingApi1.Validation
             RuleFor(x => x.ReportingPeriodId).GreaterThan(0);
             RuleFor(x => x.SalesEntries)
                 .Must(entries => entries
-                    .Select(se => CountryCodes.Normalize(se.Country))
+                    .Select(se => CountryCodes.Normalize(se.BuyerCountry))
                     .GroupBy(c => c)
                     .All(g => g.Count() == 1))
                 .WithMessage("Duplicate country codes are not allowed.");
+            RuleFor(x => x.SalesEntries)
+                .Custom((entries, ctx) =>
+                {
+                    foreach (var result in SalesEntryValidation.ValidateOssScope(entries))
+                        ctx.AddFailure(result.ErrorMessage);
+                });
         }
     }
 }
