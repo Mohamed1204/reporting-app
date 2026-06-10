@@ -1,0 +1,39 @@
+  name: CI
+
+  # WHEN this runs. Both events scoped to master so feature-branch noise
+  # doesn't trigger it until a PR is opened against master.
+  on:
+    push:
+      branches: [master]
+    pull_request:
+      branches: [master]
+
+  jobs:
+    backend:
+      runs-on: ubuntu-latest          # fresh Linux VM, thrown away when the job ends
+      defaults:
+        run:
+          working-directory: ReportingApi1   # run: steps execute here; checkout still lands at root
+      steps:
+        # Step 1 — clone your repo onto the runner. Always first; nothing exists until you do.
+        - uses: actions/checkout@v4
+
+        # Step 2 — install the .NET SDK. `with:` passes inputs to the action.
+        - name: Setup .NET
+          uses: actions/setup-dotnet@v4
+          with:
+            dotnet-version: '10.x'    # quoted so YAML treats it as a string, not a number
+
+        # Step 3 — pull down NuGet packages. Point at the .sln to avoid the
+        # .sln-vs-.csproj ambiguity in this folder.
+        - name: Restore
+          run: dotnet restore ReportingApi1.sln
+
+        # Step 4 — compile. --no-restore because step 3 already did it (skip the redundant work).
+        - name: Build
+          run: dotnet build ReportingApi1.sln --no-restore --configuration Release
+
+        # Step 5 — run the xUnit tests against what we just built. --no-build reuses
+        # the step-4 output, so this proves the compiled artifact passes.
+        - name: Test
+          run: dotnet test ReportingApi1.sln --no-build --configuration Release

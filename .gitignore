@@ -1,10 +1,11 @@
 # ========================
 # .NET Backend
 # ========================
-ReportingApi1/bin/
-ReportingApi1/obj/
-ReportingApi1/*.user
-ReportingApi1/.vs/
+# Build output from any project (main, tests, etc.) — unanchored, matches any depth
+[Bb]in/
+[Oo]bj/
+*.user
+.vs/
 
 # ========================
 # Vue Frontend
