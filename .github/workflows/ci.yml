@@ -37,3 +37,30 @@
         # the step-4 output, so this proves the compiled artifact passes.
         - name: Test
           run: dotnet test ReportingApi1.sln --no-build --configuration Release
+    frontend:
+      runs-on: ubuntu-latest
+      defaults:
+        run:
+          working-directory: frontend
+      steps:
+        - uses: actions/checkout@v4
+
+        - name: setup node
+          uses: actions/setup-node@v4
+          with:
+            node-version: '22'
+
+        - name: install deps
+          run: npm ci
+
+        - name: build
+          run: npm run build
+
+        - name: run vitest tests
+          run: npm run test:unit:ci
+
+        - name: run cypress
+          run: npm run test:e2e
+
+        
+
