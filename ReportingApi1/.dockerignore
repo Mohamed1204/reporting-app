@@ -1,0 +1,12 @@
+# Build output (esp. Windows artifacts that shouldn't enter a Linux build)
+bin/
+obj/
+
+# IDE / local tooling
+.vs/
+*.user
+.claude/
+
+# Docker files themselves don't need to be copied into the image
+Dockerfile
+.dockerignore

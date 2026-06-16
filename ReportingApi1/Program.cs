@@ -118,6 +118,14 @@ app.UseSerilogRequestLogging(options =>
     };
 });
 
+// Apply any pending EF migrations on startup so a fresh database (e.g. a SQL
+// Server container) gets its schema created automatically before the app serves.
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<VatReportingContext>();
+    db.Database.Migrate();
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
