@@ -80,7 +80,9 @@ export interface PagedResult<T> {
   totalPages: number
 }
 
-export const API_BASE = 'https://localhost:7033'
+// Relative base: requests go to the same origin and are routed to the backend
+// by the Vite dev proxy (dev) or the nginx /api proxy (container).
+export const API_BASE = ''
 
 export type VatReportSortField = 'submittedAt' | 'companyName' | 'status' | 'startDate'
 export type SortDirection = 'asc' | 'desc'
