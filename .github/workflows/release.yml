@@ -46,3 +46,15 @@ jobs:
           tags: |
             ghcr.io/mohamed1204/reporting-api:latest
             ghcr.io/mohamed1204/reporting-api:${{ github.sha }}
+
+      # Step 4 — same again for the frontend (Node build -> nginx serve).
+      # Separate image name; context/file point at the frontend folder.
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/mohamed1204/reporting-web:latest
+            ghcr.io/mohamed1204/reporting-web:${{ github.sha }}
