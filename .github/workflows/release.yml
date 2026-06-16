@@ -1,0 +1,48 @@
+name: Release
+
+# WHEN this runs: only after code lands on master (i.e. post-merge).
+# No pull_request trigger — we publish images from merged code, never from
+# an open branch that might never make it in.
+on:
+  push:
+    branches: [master]
+
+# What the auto-injected GITHUB_TOKEN is allowed to do in this workflow.
+# packages: write is what lets us push the built image to GHCR — without it
+# the login/push step gets a 403. contents: read is the safe default for checkout.
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1 — clone the repo onto the runner.
+      - uses: actions/checkout@v4
+
+      # Step 2 — authenticate to GitHub Container Registry so we can push.
+      # github.actor = whoever triggered the run; GITHUB_TOKEN is injected by
+      # GitHub, no secret to create. This is the standard Docker-maintained action.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Step 3 — build the backend image and push it.
+      # context/file point at ReportingApi1/ because the Dockerfile COPYs
+      # relative to that folder (same as `docker build ./ReportingApi1` locally).
+      # Two tags: an immutable one (the commit SHA — traceable to exact code)
+      # and a moving one (latest — convenient "newest build" pointer).
+      # Image name must be lowercase; GHCR rejects the capital in "Mohamed1204".
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./ReportingApi1
+          file: ./ReportingApi1/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/mohamed1204/reporting-api:latest
+            ghcr.io/mohamed1204/reporting-api:${{ github.sha }}
