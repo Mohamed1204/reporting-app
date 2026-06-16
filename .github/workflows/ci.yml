@@ -62,5 +62,27 @@
         - name: run cypress
           run: npm run test:e2e
 
+    # Validation only: prove both Dockerfiles still BUILD on every PR/push.
+    # push: false = no registry login, nothing published — that's release.yml's
+    # job on master. This job exists so a broken Dockerfile reds the PR.
+    docker-build:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+
+        - name: build backend image
+          uses: docker/build-push-action@v6
+          with:
+            context: ./ReportingApi1
+            file: ./ReportingApi1/Dockerfile
+            push: false
+
+        - name: build frontend image
+          uses: docker/build-push-action@v6
+          with:
+            context: ./frontend
+            file: ./frontend/Dockerfile
+            push: false
+
         
 
