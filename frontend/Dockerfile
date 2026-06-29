@@ -8,8 +8,9 @@ RUN npm run build          # outputs the static site to /app/dist
 
 # ===== Stage 2: serve =====
 FROM nginx:alpine AS serve
-# Replace nginx's default site with our SPA config (handles client-side routing)
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Our SPA config as a template; nginx's entrypoint runs envsubst on files in
+# /etc/nginx/templates/ at startup, injecting ${BACKEND_URL} into the final config.
+COPY default.conf.template /etc/nginx/templates/default.conf.template
 # Copy ONLY the built static files from the build stage
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
