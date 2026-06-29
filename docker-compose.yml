@@ -32,6 +32,8 @@ services:
   # ---- Vue frontend (nginx) ----
   frontend:
     build: ./frontend
+    environment:
+      BACKEND_URL: "http://api:8080"   # injected into nginx's proxy_pass at startup
     ports:
       - "8081:80"
     depends_on:
