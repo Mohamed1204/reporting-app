@@ -5,7 +5,7 @@
       <form @submit.prevent="handleLogin">
         <input v-model="loginForm.UserName" placeholder="Username" required />
         <input v-model="loginForm.Password" type="password" placeholder="Password" required />
-        <button type="submit">Login</button>
+        <button type="submit" :disabled="loading">{{ loading ? 'Logging in…' : 'Login' }}</button>
       </form>
       <p>Don't have an account? <a href="#" @click.prevent="mode = 'register'">Register</a></p>
     </div>
@@ -20,7 +20,7 @@
             {{ company.name }}
           </option>
         </select>
-        <button type="submit">Register</button>
+        <button type="submit" :disabled="loading">{{ loading ? 'Registering…' : 'Register' }}</button>
       </form>
       <p>Already have an account? <a href="#" @click.prevent="mode = 'login'">Login</a></p>
     </div>
@@ -38,6 +38,7 @@ const mode = ref<'login' | 'register'>('login')
 const loginForm = ref({ UserName: '123', Password: '123' })
 const registerForm = ref({ UserName: '', Password: '', companyId: '' })
 const error = ref('')
+const loading = ref(false)
 const router = useRouter()
 const authStore = useAuthStore()
 
@@ -55,6 +56,7 @@ watch(mode, (val) => {
 
 async function handleLogin() {
   error.value = ''
+  loading.value = true
   try {
     const ok = await authStore.login(loginForm.value.UserName, loginForm.value.Password)
     if (ok) {
@@ -64,11 +66,14 @@ async function handleLogin() {
     }
   } catch {
     error.value = 'Login failed. Please try again.'
+  } finally {
+    loading.value = false
   }
 }
 
 async function handleRegister() {
   error.value = ''
+  loading.value = true
   try {
     const res = await fetch('/api/Auth/register', {
       method: 'POST',
@@ -87,6 +92,8 @@ async function handleRegister() {
     }
   } catch {
     error.value = 'Registration failed. Please try again.'
+  } finally {
+    loading.value = false
   }
 }
 </script>
@@ -115,6 +122,10 @@ button {
   border: none;
   border-radius: 4px;
   font-size: 1rem;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 .error {
   color: red;

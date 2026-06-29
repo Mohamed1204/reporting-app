@@ -14,7 +14,7 @@ async function handleLogout() {
 <template>
   <div class="app-shell">
     <nav>
-      <RouterLink to="/">Open Periods</RouterLink>
+      <RouterLink v-if="authStore.isLoggedIn" to="/">Open Periods</RouterLink>
       <span class="app-version">v.1</span>
       <span v-if="authStore.isLoggedIn" class="user-info">
         {{ authStore.companyName || '—' }}
