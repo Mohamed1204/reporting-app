@@ -1,0 +1,40 @@
+name: Deploy
+
+# Runs AFTER the Release workflow finishes. workflow_run guarantees ordering:
+# we only deploy once Release has built + pushed the new images to GHCR.
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+    branches: [master]
+
+# id-token: write is REQUIRED for OIDC — it lets this job request a short-lived
+# token from GitHub to present to Azure. There is NO stored secret; azure/login
+# exchanges that token against the federated credential. The IDs below are
+# identifiers (not secrets) — you can't authenticate with them alone.
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    # Only deploy if Release actually succeeded — never ship a failed build.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log in to Azure (OIDC, passwordless)
+        uses: azure/login@v2
+        with:
+          client-id: a3a0fe32-75b5-417c-8628-ad2bf59fd6e7
+          tenant-id: e1145838-8a51-4711-9565-3c1bb969ebcb
+          subscription-id: 38e24653-ecfe-47e7-8a8a-e93ae4781a0e
+
+      # Point both apps at the image tagged with THIS commit's SHA (not :latest),
+      # so the container spec changes -> Azure rolls a new revision and pulls the
+      # freshly built image. Updating to the same :latest string wouldn't.
+      - name: Deploy new images to Container Apps
+        run: |
+          az extension add --name containerapp --upgrade
+          SHA=${{ github.event.workflow_run.head_sha }}
+          az containerapp update --name reporting-api --resource-group rg-reporting-app --image ghcr.io/mohamed1204/reporting-api:$SHA
+          az containerapp update --name reporting-web --resource-group rg-reporting-app --image ghcr.io/mohamed1204/reporting-web:$SHA
