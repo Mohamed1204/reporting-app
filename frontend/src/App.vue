@@ -15,6 +15,7 @@ async function handleLogout() {
   <div class="app-shell">
     <nav>
       <RouterLink to="/">Open Periods</RouterLink>
+      <span class="app-version">v.1</span>
       <span v-if="authStore.isLoggedIn" class="user-info">
         {{ authStore.companyName || '—' }}
         <span class="role-badge" :class="{ admin: authStore.role === 'Admin' }">
@@ -80,5 +81,12 @@ nav a.router-link-exact-active {
 .user-name {
   font-size: 0.85rem;
   color: #6b7d90;
+}
+
+/* Bump this manually before each merge to confirm a new deploy actually shipped. */
+.app-version {
+  font-size: 0.75rem;
+  color: #9aa8b5;
+  letter-spacing: 0.04em;
 }
 </style>
