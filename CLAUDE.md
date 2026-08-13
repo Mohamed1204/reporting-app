@@ -110,6 +110,8 @@ OSS scope only: domestic sales, B2B with valid VAT number, non-EU buyers, and ex
 - Use `.Result` or `.Wait()` on async calls — always use `await`
 - Add unnecessary comments or docstrings to unchanged code
 - Create new files unless strictly necessary
+- Add `Co-Authored-By` trailers or any other AI attribution to commit messages or PR bodies — this history is mine, keep it clean
+- Push directly to `master` — it's protected and requires a PR with passing checks
 
 ## Working With Me
 
