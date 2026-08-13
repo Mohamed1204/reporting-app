@@ -22,3 +22,6 @@ frontend/coverage/
 .DS_Store
 Thumbs.db
 *.log
+
+# Claude Code worktrees — leading **/ so it matches at any depth
+**/.claude/worktrees/
