@@ -4,8 +4,8 @@
       <NuxtLink to="/">Home</NuxtLink>
       <NuxtLink to="/auth">Auth</NuxtLink>
       <NuxtLink to="/periods/review">Review</NuxtLink>
-      <NuxtLink to="/periods/5">Period 5</NuxtLink>
-      <NuxtLink to="/periods/6">Period 6</NuxtLink>
+      <NuxtLink to="/periods/2">Period 2</NuxtLink>
+      <NuxtLink to="/periods/3">Period 3</NuxtLink>
     </nav>
 
     <main>
