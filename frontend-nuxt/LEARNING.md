@@ -11,7 +11,7 @@ consultancy shape). Not full-stack Nitro — .NET stays the system of record.
 
 - [x] **Phase 1 — Structure & routing**
 - [x] **Phase 2 — Data fetching**
-- [ ] **Phase 3 — The BFF (server routes)**
+- [x] **Phase 3 — The BFF (server routes)**
 - [ ] **Phase 4 — Auth**
 - [ ] **Phase 5 — Rendering strategy**
 - [ ] **Phase 6 — Test & deploy**
@@ -210,12 +210,80 @@ something to `git show` when writing the SPA comparison later.
 
 ## Phase 3 — The BFF
 
-- [ ] 3.1 Replace the stub body with a real proxy to .NET using the *private*
-      `runtimeConfig.apiBase`
-- [ ] 3.2 Propagate .NET errors sensibly (`createError`)
-- [ ] 3.3 Articulate what this bought: no CORS, no cert problem, secrets stay server-side
+Theme: the server route stops being a stub and becomes a seam. Three tiers —
+browser → Nitro → .NET → SQL Server — and the browser never learns .NET exists.
 
-**Done-when:** can argue both for and against the BFF for a given endpoint.
+- [x] 3.1 Replace the stub body with a real proxy to .NET using the *private*
+      `runtimeConfig.apiBase`
+- [x] 3.2 Propagate .NET errors sensibly (`createError`)
+- [x] 3.3 Articulate what this bought: no CORS, no cert problem, secrets stay server-side
+
+### What actually changed
+
+Only `server/api/periods.get.ts` and `server/api/periods/[id].get.ts`.
+`index.vue` and `[id].vue` were not touched and still type-check — they just
+render SQL Server rows now instead of the hardcoded array. That is the seam:
+the Vue layer is coupled to *our* API contract, not to .NET's.
+
+`server/utils/periods.ts` kept the `ReportingPeriod` interface and lost the fake
+array. The interface still earns its place, because `$fetch(url)` with no
+generic returns `any` — drop `$fetch<ReportingPeriod[]>` and the end-to-end
+typing from Phase 2 dies silently.
+
+### Where the "call the BFF instead of .NET" decision lives
+
+Nowhere but the URL. Both shapes are in the repo right now:
+
+| file | call | goes to |
+| `app/pages/index.vue` | `useFetch("/api/periods")` | Nitro — relative URL |
+| `app/pages/auth.vue` | `$fetch(path, { baseURL: config.public.apiBase })` | .NET, direct |
+
+Omit `baseURL` → relative → the browser resolves against the document's origin →
+whoever served the page. Set it → absolute → straight to Kestrel. There is no
+switch or middleware; Nuxt never "routes" the call. `/api/periods` reaches the
+handler only because a file sits at that path — delete the file and the same
+line silently returns HTML from the page renderer.
+
+The browser needs no config for hop 1 because it is same-origin (the address bar
+*is* the config). Only the cross-origin hop needs an address, which is why
+`apiBase` exists and why CORS disappeared.
+
+### Hops, and where the extra tier costs anything
+
+SSR: `useFetch` to our own route is an **in-process call** — Nitro invokes the
+handler directly, no loopback socket. One real outbound request, same as the SPA.
+Client-side nav: two real hops. So the extra tier is paid on navigation, not on
+first paint — and in production the BFF→API hop is inside the VPC while
+browser→BFF crosses the internet, which is why aggregating several API calls
+into one BFF endpoint usually *wins* latency despite adding a tier.
+
+### The argument, both directions
+
+For: CORS gone (`UseCors("VueFrontend")` is now dead weight on the Nuxt path);
+the cert problem became a config decision instead of a browser warning;
+`apiBase` never reaches the page (grep the HTML — no `5247`); and response
+shaping becomes possible (`status: 0` → `"Open"` belongs in the handler, not
+duplicated in two `.vue` files).
+
+Against: periods are public, cacheable, read-only — a CDN could serve them.
+Instead there are two hops, a Node process to operate, and error semantics
+written twice in two languages.
+
+Rule: a BFF earns its place when there is a secret to hold, a token to attach,
+calls to aggregate, or a payload to reshape. `/api/periods` is the weak case
+today and becomes the strong case the moment Phase 4 puts a JWT on it.
+
+**Done-when:** can argue both for and against the BFF for a given endpoint. ✅
+
+### Left behind for Phase 4
+
+- `runtimeConfig.public.apiBase` still ships the .NET origin to the browser.
+  It exists only for `auth.vue`. When that call moves behind the BFF, delete the
+  whole `public` block and `.env.example`.
+- `[AllowAnonymous]` on the two GETs in `ReportingPeriodsController` is temporary
+  scaffolding — Phase 4 removes it.
+- `app/layouts/default.vue` links to `/periods/3`, but the real DB only has ids
+  1 and 2. Good for seeing `createError` render as an error page; fix afterwards.
 
 ## Phase 4 — Auth (the hard one)
 
@@ -284,6 +352,33 @@ where every line executes.
   serialized into the SSR payload — never put a token there.
 - **Importing a layout instead of using `<NuxtLayout>`** silently disables
   `definePageMeta({ layout })`.
+
+- **`UseHttpsRedirection` turns the .NET HTTP port into a 307 to HTTPS**, and
+  `$fetch` follows redirects. So pointing the BFF at `http://localhost:5247`
+  does *not* dodge the dev certificate — the redirect walks straight into it and
+  Node throws `DEPTH_ZERO_SELF_SIGNED_CERT`. Symptom is confusing because a
+  plain `curl` to 5247 prints *nothing*: a 307 has an empty body and curl
+  without `-L` doesn't follow. Always `curl -i` when a request "returns nothing".
+  Fix: gate the redirect to non-development in `Program.cs` — it exists to stop
+  *browsers* sending credentials in plaintext and does nothing for
+  service-to-service calls, where TLS terminates at the ingress anyway.
+
+- **A catch-all error branch will confidently tell you the wrong cause.**
+  `e.status ?? 502` with the message "API is unreachable" was inferred from the
+  *absence* of a status — but TLS failures, DNS failures and timeouts all take
+  that branch, not just connection-refused. Split it: pass through `e.status`
+  when there is one, and for the no-response case say only what is known
+  ("no response from the API") with the real `e.message` in `data`, gated on
+  `import.meta.dev`. Put the cause in `data`, never `statusMessage` — that
+  becomes the HTTP reason phrase, which cannot hold newlines or non-ASCII, and
+  Node throws `ERR_INVALID_CHAR`.
+
+- **A build that fails inside an MSBuild *task* means `obj/`, not your code.**
+  `DefineStaticWebAssets` threw `'0x00' is an invalid start of a value` because
+  two `*.dswa.cache.json` files were null-filled by an interrupted write.
+  Deleting them fixed it. Also: `MSB3021`/`MSB3027` "file is locked" just means
+  the API is still running — Ctrl+C it. Neither is a compile error; look for
+  `CS####` before suspecting your source.
 
 ## Deployment & architecture (settled — don't relearn)
 

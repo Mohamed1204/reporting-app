@@ -1,3 +1,4 @@
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ReportingApi1.DTOs;
 using ReportingApi1.Services;
@@ -15,6 +16,8 @@ public class ReportingPeriodsController : ControllerBase
         _periodService = periodService;
     }
 
+    // TODO: temporary — anonymous so the Nuxt BFF can read periods before auth lands.
+    [AllowAnonymous]
     [HttpGet]
     public async Task<ActionResult<List<ReportingPeriodDto>>> GetAll()
     {
@@ -22,6 +25,7 @@ public class ReportingPeriodsController : ControllerBase
         return Ok(periods);
     }
 
+    [AllowAnonymous]
     [HttpGet("{id}")]
     public async Task<ActionResult<ReportingPeriodDto>> GetById(int id)
     {

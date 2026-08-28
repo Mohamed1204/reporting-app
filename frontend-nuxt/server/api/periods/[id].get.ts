@@ -1,5 +1,7 @@
-export default defineEventHandler((event) => {
-  console.log('ran [id] handler')
+import type { FetchError } from 'ofetch'
+
+export default defineEventHandler(async (event) => {
+  const config = useRuntimeConfig(event)
 
   const id = Number(getRouterParam(event, 'id'))
 
@@ -7,15 +9,27 @@ export default defineEventHandler((event) => {
     throw createError({ statusCode: 400, statusMessage: 'Period id must be an integer' })
   }
 
-  const period = periods.find((p) => p.id === id)
+  try {
+    return await $fetch<ReportingPeriod>(`${config.apiBase}/api/reportingperiods/${id}`)
+  } catch (err) {
+    const e = err as FetchError
 
-  if (!period) {
-    throw createError({ statusCode: 404, statusMessage: 'Period not found' })
+    if (e.status === 404) {
+      throw createError({ statusCode: 404, statusMessage: 'Period not found' })
+    }
+
+    if (e.status) {
+      throw createError({
+        statusCode: e.status,
+        statusMessage: 'Upstream API rejected the request'
+      })
+    }
+
+    // No HTTP response at all: connection refused, DNS, TLS, or timeout.
+    throw createError({
+      statusCode: 502,
+      statusMessage: 'No response from the reporting API',
+      data: import.meta.dev ? { cause: e.message } : undefined
+    })
   }
-
-  return period
 })
-
-//easy wins Lille H  Sabah H  Slavia A
-// Medium Betis A  Dortmund H
-// Tuff  R.Madrid  Bayern  Napoli A

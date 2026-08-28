@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using ReportingApi1.Data;
 using ReportingApi1.Infrastructure;
 using ReportingApi1.Services;
@@ -135,7 +135,12 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("VueFrontend");
 
-app.UseHttpsRedirection();
+// Browsers only. Skipped in development so the Nuxt BFF can call the HTTP
+// port without tripping over the self-signed dev certificate.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthentication();
 app.UseAuthorization();
