@@ -328,7 +328,7 @@ difference is whether the middle tier can run your logic.
 
 Rewrites the login page currently in `app/pages/auth.vue`.
 
-- [ ] 4.0 Move login behind the BFF — delete `baseURL:` from `auth.vue:32`, add
+- [x] 4.0 Move login behind the BFF — delete `baseURL:` from `auth.vue:32`, add
       `server/api/auth/login.post.ts`. Prerequisite for everything below: today
       .NET sets the refresh cookie on *its own* origin, where Nitro cannot see it.
 - [ ] 4.1 Token in a cookie instead of `useState`. Two options — (a) a normal

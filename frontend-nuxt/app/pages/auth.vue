@@ -3,19 +3,10 @@ definePageMeta({
   layout: 'auth',
 })
 
-interface AuthResponse {
-  token: string
-  role: string
-  userName: string
-  companyName: string
-}
-
-const config = useRuntimeConfig()
 const username = ref('')
 const password = ref('')
 const errorMessage = ref('')
 const isSubmitting = ref(false)
-const auth = useState<AuthResponse | null>('auth', () => null)
 
 async function handleSubmit() {
   errorMessage.value = ''
@@ -28,15 +19,18 @@ async function handleSubmit() {
   isSubmitting.value = true
 
   try {
-    auth.value = await $fetch<AuthResponse>('/api/Auth/login', {
-      baseURL: config.public.apiBase,
+    await $fetch<SessionUser>('/api/auth/login', {
       method: 'POST',
-      credentials: 'include',
       body: {
         UserName: username.value,
         Password: password.value,
       },
     })
+
+    // The handler already sent Set-Cookie. This re-reads it into any
+    // useCookie('session') refs elsewhere in the app; assigning one directly
+    // would rewrite the cookie from JS and drop the server's maxAge.
+    refreshCookie('session')
 
     await navigateTo('/')
   } catch {
