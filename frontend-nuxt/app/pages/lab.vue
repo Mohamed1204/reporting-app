@@ -1,4 +1,6 @@
 <script setup lang="ts">
+definePageMeta({ public: true })
+
 // 1 — useFetch: SSR-aware, key derived from the URL
 const { data: a } = await useFetch("/api/periods");
 

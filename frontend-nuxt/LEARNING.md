@@ -331,7 +331,7 @@ Rewrites the login page currently in `app/pages/auth.vue`.
 - [x] 4.0 Move login behind the BFF — delete `baseURL:` from `auth.vue:32`, add
       `server/api/auth/login.post.ts`. Prerequisite for everything below: today
       .NET sets the refresh cookie on *its own* origin, where Nitro cannot see it.
-- [ ] 4.1 Token in a cookie instead of `useState`. Two options — (a) a normal
+- [x] 4.1 Token in a cookie instead of `useState`. Two options — (a) a normal
       cookie readable by JS, or (b) **HttpOnly, set by Nitro, token never reaches
       the browser**. Going with (b): it is the reason the BFF pattern exists.
       Note HttpOnly can only be set server-side, so this is h3's
