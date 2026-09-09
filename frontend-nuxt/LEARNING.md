@@ -285,17 +285,67 @@ today and becomes the strong case the moment Phase 4 puts a JWT on it.
 - `app/layouts/default.vue` links to `/periods/3`, but the real DB only has ids
   1 and 2. Good for seeing `createError` render as an error page; fix afterwards.
 
+## Hard constraint — the SPA must keep working
+
+`frontend/` (Vue SPA) and `frontend-nuxt/` both hit the same .NET API, and
+`AuthController` is shared. Keeping both alive is deliberate: the SPA is the
+control group for the comparison write-up at the end.
+
+**Rule: Phase 4 changes Nuxt, not .NET.** Nitro adapts to what `AuthController`
+already does — `HttpOnly`, `SameSite=Strict`, cookie name `refreshToken`,
+`Secure = !IsDevelopment()`. Do not edit `SetRefreshCookie`/`ClearRefreshCookie`
+to make the BFF more convenient. That is also the realistic constraint: a BFF is
+normally built against an API you do not own. If a change there is genuinely
+unavoidable, add a new endpoint rather than modifying an existing one.
+
+**There is no automated safety net.** `src/stores/__tests__/auth.spec.ts` is the
+SPA's only spec and does not exercise `fetch`; `ReportingApi1.Tests` covers
+services only, no controllers. Nothing asserts the API contract. So verify by
+hand after any .NET-side change:
+
+1. `cd frontend && npm run dev` → log in at `:5173`
+2. Load a page that lists periods, and one that needs the token
+3. Hard-refresh a protected page — the refresh-cookie flow must still fire
+4. Log out, confirm the cookie is cleared
+
+Changes made so far, and why neither touches the SPA:
+
+- `[AllowAnonymous]` on the two `ReportingPeriods` GETs — additive. The SPA still
+  sends its JWT; the endpoint just stopped requiring one. Removing it at the end
+  of Phase 4 restores the original behaviour exactly.
+- `UseHttpsRedirection` gated to non-development — the SPA's Vite proxy targets
+  `https://localhost:7033` directly (`vite.config.ts:19`) and never touches 5247.
+  The HTTPS listener is unchanged.
+
+**The SPA's Vite proxy is a reverse proxy, not a BFF.** `/api` → `:7033` with
+`secure: false` looks like the same three tiers, but it is dev-only (nginx does
+it in prod — a different component with a different config) and it is a dumb
+pipe: it cannot hold a secret, reshape a response, aggregate calls, or keep the
+token out of browser JS. Reverse proxy and BFF are identical on a diagram; the
+difference is whether the middle tier can run your logic.
+
 ## Phase 4 — Auth (the hard one)
 
 Rewrites the login page currently in `app/pages/auth.vue`.
 
-- [ ] 4.1 Token in a cookie (`useCookie`) instead of `useState` — survives refresh,
-      readable during SSR
+- [ ] 4.0 Move login behind the BFF — delete `baseURL:` from `auth.vue:32`, add
+      `server/api/auth/login.post.ts`. Prerequisite for everything below: today
+      .NET sets the refresh cookie on *its own* origin, where Nitro cannot see it.
+- [ ] 4.1 Token in a cookie instead of `useState`. Two options — (a) a normal
+      cookie readable by JS, or (b) **HttpOnly, set by Nitro, token never reaches
+      the browser**. Going with (b): it is the reason the BFF pattern exists.
+      Note HttpOnly can only be set server-side, so this is h3's
+      `setCookie(event, ...)` in the handler, not `useCookie` in Vue.
 - [ ] 4.2 Route middleware via `definePageMeta`, replacing the SPA's
       `router.beforeEach` guard
 - [ ] 4.3 **Cookie forwarding on server-side fetches** — SSR has no browser cookie jar
-- [ ] 4.4 Refresh-token flow + logout; expect trouble from `SameSite=Strict`
-      (`ReportingApi1/Controllers/AuthController.cs:76`)
+- [ ] 4.4 Refresh-token flow + logout. The real work is not `SameSite` — that
+      keys on *site* (registrable domain), so `:3000` and `:7033` are already
+      same-site and it is not biting locally. The work is that .NET's
+      `Set-Cookie` now returns to **Nitro**, not the browser: the BFF has to
+      capture the refresh cookie, hold it, and replay it on `/refresh`.
+- [ ] 4.5 Remove `[AllowAnonymous]` from `ReportingPeriodsController` — the
+      scaffolding teardown and the acceptance test in one step.
 
 **Done-when:** can trace a hard refresh of a protected page end to end, naming
 where every line executes.
