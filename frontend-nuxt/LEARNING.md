@@ -336,16 +336,28 @@ Rewrites the login page currently in `app/pages/auth.vue`.
       the browser**. Going with (b): it is the reason the BFF pattern exists.
       Note HttpOnly can only be set server-side, so this is h3's
       `setCookie(event, ...)` in the handler, not `useCookie` in Vue.
-- [ ] 4.2 Route middleware via `definePageMeta`, replacing the SPA's
-      `router.beforeEach` guard
-- [ ] 4.3 **Cookie forwarding on server-side fetches** — SSR has no browser cookie jar
+- [x] 4.2 Route middleware, replacing the SPA's `router.beforeEach` guard.
+      Built as **default-deny**: `app/middleware/auth.global.ts` runs on every
+      route, pages opt *out* with `definePageMeta({ public: true })`. Keys on the
+      non-HttpOnly `session` cookie, never `token` — `useCookie` cannot see an
+      HttpOnly cookie, so keying on `token` would look logged out on every
+      client-side navigation. Safe, because this only decides what to *render*;
+      .NET still verifies the real JWT.
+- [x] 4.3 **Cookie forwarding on server-side fetches.** Turned out to be half
+      solved already: `useFetch` with a relative `/`-prefixed URL swaps the global
+      `$fetch` for `useRequestFetch()`, which is `event.$fetch`, which merges
+      `getProxyRequestHeaders(event)` — and `cookie` is *not* in h3's strip list.
+      So hop 2 (page render → own API route) already carries it. The real work was
+      hop 3: `server/utils/dotnet.ts` translating the HttpOnly cookie into
+      `Authorization: Bearer` for .NET. That swap *is* the BFF.
 - [ ] 4.4 Refresh-token flow + logout. The real work is not `SameSite` — that
       keys on *site* (registrable domain), so `:3000` and `:7033` are already
       same-site and it is not biting locally. The work is that .NET's
       `Set-Cookie` now returns to **Nitro**, not the browser: the BFF has to
       capture the refresh cookie, hold it, and replay it on `/refresh`.
-- [ ] 4.5 Remove `[AllowAnonymous]` from `ReportingPeriodsController` — the
-      scaffolding teardown and the acceptance test in one step.
+- [x] 4.5 Removed `[AllowAnonymous]` from `ReportingPeriodsController` — done
+      with 4.3, because until the endpoint is protected, attaching the bearer
+      header changes nothing observable and "verified" would mean nothing.
 
 **Done-when:** can trace a hard refresh of a protected page end to end, naming
 where every line executes.
@@ -429,6 +441,27 @@ where every line executes.
   Deleting them fixed it. Also: `MSB3021`/`MSB3027` "file is locked" just means
   the API is still running — Ctrl+C it. Neither is a compile error; look for
   `CS####` before suspecting your source.
+
+- **`useFetch` forwards cookies during SSR. Bare `$fetch` does not.** The failure
+  mode is "works when you click a link, 401s on refresh", because a client-side
+  navigation runs in the browser, which attaches cookies itself — so dev looks
+  fine until someone hits F5. `useFetch` only gets the special treatment when the
+  URL is a string starting with `/` and there is no absolute `baseURL`
+  (`nuxt/dist/app/composables/fetch.js:108`); it then uses `useRequestFetch()`,
+  which is `event.$fetch`, which is h3's `fetchWithEvent` merging
+  `getProxyRequestHeaders(event)`. The strip list there is `transfer-encoding,
+  accept-encoding, connection, keep-alive, upgrade, expect, host, accept` —
+  `cookie` is not on it. So `useAsyncData(() => $fetch('/api/x'))` silently
+  drops the credential on SSR; `useAsyncData(() => useRequestFetch()('/api/x'))`
+  does not.
+
+- **Scaffolding you added to unblock yourself is not a constraint to design
+  around.** Before touching `[AllowAnonymous]`, check who put it there:
+  `git show <commit-before>:<file>` settled in one command that the attribute was
+  mine from Phase 3, not part of the original app. Same habit for "will this
+  break the other frontend?" — `grep -rhoE "api/[A-Za-z0-9_/-]+" frontend/src`
+  listed every endpoint the SPA calls and `ReportingPeriods` was not among them.
+  Two greps beat an argument about risk.
 
 ## Deployment & architecture (settled — don't relearn)
 
