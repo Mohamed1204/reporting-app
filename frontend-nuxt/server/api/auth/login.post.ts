@@ -11,9 +11,9 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    // No cookie exists yet, so callApi sends no Authorization header — which is
-    // what /login wants.
-    const auth = await callApi<AuthResponse>(event, '/api/Auth/login', {
+    // Raw, because .NET returns the refresh token as a `Set-Cookie` header and
+    // plain `$fetch` would hand back only the body.
+    const res = await callApiRaw<AuthResponse>(event, '/api/Auth/login', {
       method: 'POST',
       body: {
         UserName: body.UserName,
@@ -21,9 +21,19 @@ export default defineEventHandler(async (event) => {
       }
     })
 
+    if (!res._data) {
+      throw createError({ statusCode: 502, statusMessage: 'Malformed response from the reporting API' })
+    }
+
+    // That cookie was set on .NET's origin, where the browser will never send
+    // it back. Re-issue it on ours.
+    captureRefreshCookie(event, res)
+
     // The token stops here. Only the display fields continue to the browser.
-    return setAuthCookies(event, auth)
+    return setAuthCookies(event, res._data)
   } catch (err) {
+    if (isError(err)) throw err
+
     throw apiError(err, { 401: 'Invalid username or password' })
   }
 })

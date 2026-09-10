@@ -4,6 +4,8 @@ import type { H3Event } from 'h3'
 /** Per-status messages a handler wants instead of the defaults below. */
 type StatusMessages = Record<number, string>
 
+type ApiOptions = Omit<FetchOptions<'json'>, 'baseURL'>
+
 const DEFAULT_MESSAGES: StatusMessages = {
   401: 'Not authenticated',
   403: 'Not authorized',
@@ -11,30 +13,62 @@ const DEFAULT_MESSAGES: StatusMessages = {
 }
 
 /**
- * The single door to .NET. Resolves the base URL from runtime config and
- * translates the browser's HttpOnly cookie into the `Authorization: Bearer`
- * header .NET expects — the credential swap that is the whole point of the BFF.
- *
- * Throws the raw FetchError; pass it to `apiError` in the handler's catch.
+ * Rebuilt on every attempt rather than computed once: after a refresh the token
+ * has changed, and the retry must carry the new one.
  */
-export async function callApi<T>(
-  event: H3Event,
-  path: string,
-  options: Omit<FetchOptions<'json'>, 'baseURL'> = {}
-): Promise<T> {
-  const config = useRuntimeConfig(event)
+function buildOptions(event: H3Event, options: ApiOptions) {
   const token = getAuthToken(event)
 
-  return await $fetch<T>(path, {
+  return {
     ...options,
-    baseURL: config.apiBase,
+    baseURL: useRuntimeConfig(event).apiBase,
     headers: {
       // Omitted entirely when absent, so .NET answers a clean 401 rather than
       // rejecting a malformed header.
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers
     }
-  })
+  }
+}
+
+/**
+ * The single door to .NET. Resolves the base URL from runtime config and
+ * translates the browser's HttpOnly cookie into the `Authorization: Bearer`
+ * header .NET expects — the credential swap that is the whole point of the BFF.
+ *
+ * A 401 is retried once behind a refresh, so an access token expiring mid-visit
+ * is invisible to the caller. Throws the raw FetchError; pass it to `apiError`.
+ */
+export async function callApi<T>(
+  event: H3Event,
+  path: string,
+  options: ApiOptions = {}
+): Promise<T> {
+  try {
+    return await $fetch<T>(path, buildOptions(event, options))
+  } catch (err) {
+    const status = (err as FetchError).status
+
+    // Only an expired access token is worth retrying, and only once: a second
+    // 401 means the refresh itself is not being honoured.
+    if (status !== 401 || !getRefreshToken(event)) throw err
+    if (!(await refreshSession(event))) throw err
+
+    return await $fetch<T>(path, buildOptions(event, options))
+  }
+}
+
+/**
+ * Same request, full response. Needed only where a `Set-Cookie` header matters,
+ * since `$fetch` resolves to the parsed body and discards everything else.
+ * No refresh-and-retry: the endpoints that need this have no session yet.
+ */
+export async function callApiRaw<T>(
+  event: H3Event,
+  path: string,
+  options: ApiOptions = {}
+) {
+  return await $fetch.raw<T>(path, buildOptions(event, options))
 }
 
 /**

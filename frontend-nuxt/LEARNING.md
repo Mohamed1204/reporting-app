@@ -12,7 +12,7 @@ consultancy shape). Not full-stack Nitro — .NET stays the system of record.
 - [x] **Phase 1 — Structure & routing**
 - [x] **Phase 2 — Data fetching**
 - [x] **Phase 3 — The BFF (server routes)**
-- [ ] **Phase 4 — Auth**
+- [x] **Phase 4 — Auth**
 - [ ] **Phase 5 — Rendering strategy**
 - [ ] **Phase 6 — Test & deploy**
 - [ ] **Phase 7 — Public/SEO section (optional)**
@@ -350,11 +350,15 @@ Rewrites the login page currently in `app/pages/auth.vue`.
       So hop 2 (page render → own API route) already carries it. The real work was
       hop 3: `server/utils/dotnet.ts` translating the HttpOnly cookie into
       `Authorization: Bearer` for .NET. That swap *is* the BFF.
-- [ ] 4.4 Refresh-token flow + logout. The real work is not `SameSite` — that
-      keys on *site* (registrable domain), so `:3000` and `:7033` are already
-      same-site and it is not biting locally. The work is that .NET's
-      `Set-Cookie` now returns to **Nitro**, not the browser: the BFF has to
-      capture the refresh cookie, hold it, and replay it on `/refresh`.
+- [x] 4.4 Refresh-token flow + logout. Not `SameSite` — that keys on *site*
+      (registrable domain), so `:3000` and `:7033` were already same-site. The
+      work was that .NET's `Set-Cookie` now returns to **Nitro**, not the
+      browser: `$fetch.raw()` to reach the header, then re-issue the refresh
+      token as our own cookie. Three things only showed up under test —
+      a rotating-token API needs a **grace window**, not just single-flight;
+      **logout has to invalidate that cache**; and the refresh has to happen in
+      **server middleware on the real request**, because a sub-request's
+      Set-Cookie is discarded. See the gotchas.
 - [x] 4.5 Removed `[AllowAnonymous]` from `ReportingPeriodsController` — done
       with 4.3, because until the endpoint is protected, attaching the bearer
       header changes nothing observable and "verified" would mean nothing.
@@ -462,6 +466,40 @@ where every line executes.
   break the other frontend?" — `grep -rhoE "api/[A-Za-z0-9_/-]+" frontend/src`
   listed every endpoint the SPA calls and `ReportingPeriods` was not among them.
   Two greps beat an argument about risk.
+
+- **h3 does not share `context` into in-process SSR sub-requests.** Verified
+  with a probe, not assumed: a page render logged one context id and its own
+  `/api/periods` call logged a different one. The consequence is sharp — a
+  sub-request has its own response object, which is thrown away once the body
+  is read, so **`setCookie` inside an API handler during SSR reaches nobody**.
+  It works perfectly on a client-side call to the same route, so this only
+  breaks on hard refresh. Anything that must reach the browser has to run in
+  `server/middleware/`, on the real request. And after changing the session
+  there, rewrite `event.node.req.headers.cookie` too — Nitro copies those
+  headers into its sub-requests at fetch time, so that is how the fresh token
+  gets forwarded.
+
+- **Single-flight is not enough for rotating refresh tokens; you need a grace
+  window.** De-duplicating *concurrent* refreshes is the obvious half. The half
+  that bites: a request arriving a moment after the first refresh settles is
+  still carrying the old cookie — its copy was taken before the rotation — and
+  spending it again is exactly the replay the API punishes. Measured: 6 parallel
+  requests produced 2 refresh calls and one `reuse detected`, revoking the
+  family and 401ing four of them. Keep resolved entries for ~10s and hand back
+  the same result. Then **logout must purge that cache**, or a spent token can
+  fetch the revoked session straight back out of it.
+
+- **Logout cannot revoke an access token.** Stateless JWT: .NET checks signature
+  and `exp`, both still valid, so a *captured* token keeps working until it
+  expires. Logout revokes the refresh token and clears the cookies — that is the
+  whole of what it can do. This is the argument for `ExpiryMinutes: 15` in
+  production; dev's 600 makes the window ten hours.
+
+- **`worker exited with code 0` from the Nitro dev server is not your bug.**
+  Editing anything in `server/utils/` triggers an HMR reload that sometimes
+  kills the dev worker outright, after which *every* route 500s with that
+  message — including ones that have nothing to do with the change. Restart the
+  dev server before debugging. Two of the failures chased in 4.4 were this.
 
 ## Deployment & architecture (settled — don't relearn)
 
