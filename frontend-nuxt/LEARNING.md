@@ -13,7 +13,7 @@ consultancy shape). Not full-stack Nitro — .NET stays the system of record.
 - [x] **Phase 2 — Data fetching**
 - [x] **Phase 3 — The BFF (server routes)**
 - [x] **Phase 4 — Auth**
-- [ ] **Phase 5 — Rendering strategy**
+- [x] **Phase 5 — Rendering strategy**
 - [ ] **Phase 6 — Test & deploy**
 - [ ] **Phase 7 — Public/SEO section (optional)**
 
@@ -368,9 +368,20 @@ where every line executes.
 
 ## Phase 5 — Rendering strategy
 
-- [ ] 5.1 `routeRules`: prerender public, SSR some, `ssr: false` for the dashboard
-- [ ] 5.2 `error.vue`, `createError`, `showError`
-- [ ] 5.3 `useSeoMeta` on anything public
+- [x] 5.1 `routeRules`. Only two rules earned a place: `/auth` is
+      `prerender: true` (a static form with no data of its own), and `/api/**`
+      gets `cache-control: no-store` so a CDN or corporate proxy can never serve
+      one filer's periods to another. Deliberately *not* used, and worth being
+      able to say why: `ssr: false` on the dashboard would undo Phase 4, and
+      `swr`/`isr` cannot apply to a response that differs per user.
+- [x] 5.2 `error.vue`. The distinction is the lesson: `/nope` replaces the whole
+      page, while `/periods/999` renders at 200 with the message inline through
+      `useFetch`'s `error` ref. Same 404 from the BFF, two treatments — full
+      page for "this route is wrong", inline for "this record is missing".
+- [x] 5.3 `useSeoMeta`. Thin until Phase 7, since the only public page is the
+      login form — and that one gets `robots: 'noindex, nofollow'`, because a
+      login page ranking for the company name is a liability, not traffic.
+      Titles on the rest, via a `titleTemplate` in `app.vue`.
 
 **Done-when:** can justify each rule to a tech lead.
 
@@ -500,6 +511,28 @@ where every line executes.
   kills the dev worker outright, after which *every* route 500s with that
   message — including ones that have nothing to do with the change. Restart the
   dev server before debugging. Two of the failures chased in 4.4 were this.
+
+- **Prerendering a page removes its server-side redirect.** `/auth` is
+  `prerender: true`, so at request time there is no server run — which means the
+  "already logged in, go home" bounce can only happen client-side after
+  hydration, as a visible flash. Prerendering is not free on any page whose
+  output depends on who is asking, even indirectly. Worth the trade here; worth
+  noticing that it *is* a trade.
+
+- **`titleTemplate: '%s · Site'` renders a dangling separator** on any page that
+  sets no title — literally `<title>· OSS Reporting</title>`. The string form
+  has no way to express "no title". Use the function form in `app.vue`:
+  `(title) => title ? title + ' · Site' : 'Site'`.
+
+- **Nuxt content-negotiates error responses.** `curl /nope` returns *JSON*, not
+  your `error.vue`, because curl sends `Accept: */*`. It looked like the error
+  page was broken. Add `-H 'Accept: text/html'` to see what a browser would.
+
+- **A default-deny global middleware means anonymous users never see a 404.**
+  Every unmatched URL 302s to `/auth`, typos included — the middleware runs
+  before the router concludes there is no page. Arguably correct (it does not
+  leak which routes exist), but it means `error.vue` can only be tested while
+  logged in.
 
 ## Deployment & architecture (settled — don't relearn)
 

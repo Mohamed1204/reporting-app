@@ -4,6 +4,14 @@ definePageMeta({
   public: true,
 })
 
+// Public, but deliberately not indexed: a login form is not a landing page, and
+// having it rank for the company name is a liability rather than traffic.
+useSeoMeta({
+  title: 'Sign in',
+  description: 'Sign in to file OSS VAT returns.',
+  robots: 'noindex, nofollow'
+})
+
 const username = ref('')
 const password = ref('')
 const errorMessage = ref('')

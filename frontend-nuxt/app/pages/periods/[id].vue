@@ -23,6 +23,8 @@ console.log("setup ran for id:", route.params.id);
 //
 //Cala   Maghl Saliba   Timber
 //Hincap Mosq  Konsa    White 
+useSeoMeta({ title: () => `Period ${route.params.id}` });
+
 const { data: period, error } = await useFetch(
   () => `/api/periods/${route.params.id}`
 );

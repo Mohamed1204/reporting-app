@@ -1,4 +1,6 @@
 <script setup lang="ts">
+useSeoMeta({ title: "Reporting periods" });
+
 const { data: periods, error } = await useFetch("/api/periods");
 
 const statusLabels = ["Open", "Closed", "Locked"];
