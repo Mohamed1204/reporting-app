@@ -18,7 +18,10 @@ function baseOptions() {
     // Not 'strict': that withholds the cookie on top-level navigation from
     // another site, so an SSR render of an inbound link would look logged out.
     sameSite: 'lax',
-    secure: !import.meta.dev
+    // Dev is always plain HTTP. In production it is config rather than a
+    // constant, so the Compose stack can serve over HTTP on localhost without
+    // the browser silently discarding every auth cookie.
+    secure: import.meta.dev ? false : useRuntimeConfig().cookieSecure
   } as const
 }
 

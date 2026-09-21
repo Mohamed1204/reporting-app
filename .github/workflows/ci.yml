@@ -84,5 +84,12 @@
             file: ./frontend/Dockerfile
             push: false
 
+        - name: build nuxt image
+          uses: docker/build-push-action@v6
+          with:
+            context: ./frontend-nuxt
+            file: ./frontend-nuxt/Dockerfile
+            push: false
+
         
 

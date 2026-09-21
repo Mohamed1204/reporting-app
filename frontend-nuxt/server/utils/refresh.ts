@@ -109,8 +109,9 @@ async function rotate(apiBase: string, refreshToken: string): Promise<RotatedSes
  */
 export function readRefreshCookie(res: FetchResponse<unknown>) {
   for (const header of res.headers.getSetCookie()) {
+    // parseSetCookie returns undefined on a header it cannot make sense of.
     const parsed = parseSetCookie(header)
-    if (parsed.name !== REFRESH_COOKIE || !parsed.value) continue
+    if (!parsed?.value || parsed.name !== REFRESH_COOKIE) continue
 
     return { refreshToken: parsed.value, refreshExpires: parsed.expires }
   }

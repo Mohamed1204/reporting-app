@@ -14,7 +14,7 @@ consultancy shape). Not full-stack Nitro — .NET stays the system of record.
 - [x] **Phase 3 — The BFF (server routes)**
 - [x] **Phase 4 — Auth**
 - [x] **Phase 5 — Rendering strategy**
-- [ ] **Phase 6 — Test & deploy**
+- [x] **Phase 6 — Test & deploy**
 - [ ] **Phase 7 — Public/SEO section (optional)**
 
 ---
@@ -387,9 +387,19 @@ where every line executes.
 
 ## Phase 6 — Test & deploy
 
-- [ ] 6.1 `@nuxt/test-utils` + Vitest
-- [ ] 6.2 Dockerfile — node runtime, no nginx stage (contrast `../frontend/Dockerfile`)
-- [ ] 6.3 Add as a service in `../docker-compose.yml`
+- [x] 6.1 Vitest + `@nuxt/test-utils`, kept small: `readJwtExpiry` and
+      `apiError`, the two pure functions. Added `vue-tsc` in the same pass —
+      five phases had never been type-checked, and the first run found a real
+      latent crash (see gotchas).
+- [x] 6.2 Dockerfile. The contrast with `../frontend/Dockerfile` is the whole
+      lesson: that one builds to `dist/` and serves it with **nginx**; this one
+      builds to `.output/` and runs **node**, because a Nuxt app is a server,
+      not a folder of files. Runtime stage copies `.output` and nothing else —
+      Nitro bundles its own dependencies, so there is no `npm ci` in stage 2.
+- [x] 6.3 Added as a compose service. The payoff of `runtimeConfig`: the SPA
+      needs `envsubst` to rewrite its nginx config at boot, because its API URL
+      was baked in at build time. Nuxt just reads `NUXT_API_BASE` at startup —
+      same image, any environment.
 
 ## Phase 7 — Public/SEO section (optional)
 
@@ -533,6 +543,31 @@ where every line executes.
   before the router concludes there is no page. Arguably correct (it does not
   leak which routes exist), but it means `error.vue` can only be tested while
   logged in.
+
+- **`secure: !import.meta.dev` breaks the Docker stack, silently.** A production
+  build sets `Secure` on every auth cookie, and browsers discard `Secure`
+  cookies arriving over plain `http://`. Login returns 200 and you stay logged
+  out, with nothing in any log. Drive it from `runtimeConfig` instead
+  (`NUXT_COOKIE_SECURE=false` in compose) so the flag follows the deployment,
+  not the build mode. Confirmed by diffing `Set-Cookie` from the same build with
+  and without the variable.
+
+- **The first `vue-tsc` run found a real bug, not just noise.**
+  `parseSetCookie` returns `SetCookie | undefined`, and the refresh path used
+  `parsed.name` unguarded — a malformed `Set-Cookie` from .NET would have thrown
+  inside the refresh instead of failing cleanly to a re-login. Five phases of
+  passing manual tests did not surface it. Run the typechecker early.
+
+- **`vue-tsc` cannot use TypeScript 7.** `npm i -D typescript` now installs 7.x
+  (the native compiler), which dropped the `./lib/tsc` export that vue-tsc
+  requires — it dies with `ERR_PACKAGE_PATH_NOT_EXPORTED`, which reads like a
+  broken install rather than a version conflict. Pin `typescript@^5`.
+
+- **Auto-imports are globals, not imports — which shows up in tests.**
+  `server/utils/dotnet.ts` calls `createError` without importing it, so Vitest
+  running the file as plain Node throws `createError is not defined`. Either
+  stub it (`vi.stubGlobal('createError', createError)`) or run the test in the
+  Nuxt environment. Convenient in the app, an extra step under test.
 
 ## Deployment & architecture (settled — don't relearn)
 

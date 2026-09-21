@@ -1,10 +1,12 @@
-import type { FetchError, FetchOptions } from 'ofetch'
+import type { FetchError } from 'ofetch'
 import type { H3Event } from 'h3'
 
 /** Per-status messages a handler wants instead of the defaults below. */
 type StatusMessages = Record<number, string>
 
-type ApiOptions = Omit<FetchOptions<'json'>, 'baseURL'>
+// Derived from $fetch itself rather than ofetch's FetchOptions: Nitro narrows
+// `method` to a literal union, and ofetch's plain `string` is not assignable.
+type ApiOptions = Omit<NonNullable<Parameters<typeof $fetch>[1]>, 'baseURL'>
 
 const DEFAULT_MESSAGES: StatusMessages = {
   401: 'Not authenticated',
@@ -45,7 +47,7 @@ export async function callApi<T>(
   options: ApiOptions = {}
 ): Promise<T> {
   try {
-    return await $fetch<T>(path, buildOptions(event, options))
+    return await $fetch<T>(path, buildOptions(event, options)) as T
   } catch (err) {
     const status = (err as FetchError).status
 
@@ -54,7 +56,9 @@ export async function callApi<T>(
     if (status !== 401 || !getRefreshToken(event)) throw err
     if (!(await refreshSession(event))) throw err
 
-    return await $fetch<T>(path, buildOptions(event, options))
+    // `as T`: $fetch resolves to TypedInternalResponse, which narrows to T for a
+    // concrete route but cannot be proven equal to a generic T.
+    return await $fetch<T>(path, buildOptions(event, options)) as T
   }
 }
 

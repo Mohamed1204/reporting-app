@@ -9,7 +9,6 @@ export default defineEventHandler(async (event) => {
   if (!body?.UserName || !body?.Password) {
     throw createError({ statusCode: 400, statusMessage: 'Username and password are required' })
   }
-
   try {
     // Raw, because .NET returns the refresh token as a `Set-Cookie` header and
     // plain `$fetch` would hand back only the body.

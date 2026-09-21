@@ -58,3 +58,17 @@ jobs:
           tags: |
             ghcr.io/mohamed1204/reporting-web:latest
             ghcr.io/mohamed1204/reporting-web:${{ github.sha }}
+
+      # Step 5 — the Nuxt frontend. Same pattern, but the image runs node
+      # rather than nginx: this one is a server, not a folder of static files.
+      # No build args — its API URL is read from the environment at startup,
+      # so one image serves every environment.
+      - name: Build and push nuxt image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend-nuxt
+          file: ./frontend-nuxt/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/mohamed1204/reporting-nuxt:latest
+            ghcr.io/mohamed1204/reporting-nuxt:${{ github.sha }}

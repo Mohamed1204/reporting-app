@@ -10,10 +10,15 @@ export default defineNuxtConfig({
   },
 
   runtimeConfig: {
+    // NUXT_API_BASE. Private: only Nitro talks to .NET, so the browser never
+    // needs this. `public.apiBase` existed until Phase 3 and is gone with the
+    // last direct browser-to-.NET call.
     apiBase: 'http://localhost:5247',
-    public: {
-      apiBase: 'https://localhost:7033'
-    }
+
+    // NUXT_COOKIE_SECURE. Auth cookies carry the Secure flag, which browsers
+    // only honour over HTTPS — set this false to run the production build over
+    // plain HTTP, as the local Compose stack does, or login silently fails.
+    cookieSecure: true
   },
 
   routeRules: {
