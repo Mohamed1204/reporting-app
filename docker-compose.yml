@@ -39,5 +39,24 @@ services:
     depends_on:
       - api
 
+  # ---- Nuxt frontend (node) ----
+  # Same API, second client. Unlike the nginx service above, this one runs a
+  # server: it renders pages and proxies every API call, so the browser never
+  # talks to `api` directly.
+  frontend-nuxt:
+    build: ./frontend-nuxt
+    environment:
+      # Read at startup, not baked in at build — so this image is identical in
+      # every environment. `api` resolves on the compose network; only Nitro
+      # ever calls it.
+      NUXT_API_BASE: "http://api:8080"
+      # Served over plain HTTP here, and browsers discard Secure cookies on
+      # http://. Without this the login succeeds and you stay logged out.
+      NUXT_COOKIE_SECURE: "false"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
 volumes:
   mssql-data:

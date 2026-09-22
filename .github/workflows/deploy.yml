@@ -38,3 +38,28 @@ jobs:
           SHA=${{ github.event.workflow_run.head_sha }}
           az containerapp update --name reporting-api --resource-group rg-reporting-app --image ghcr.io/mohamed1204/reporting-api:$SHA
           az containerapp update --name reporting-web --resource-group rg-reporting-app --image ghcr.io/mohamed1204/reporting-web:$SHA
+
+      # The Nuxt app is pipeline-ready but not provisioned. Guarded rather than
+      # unconditional so a missing container app cannot red a deploy that
+      # otherwise succeeded — the warning keeps it visible in the run summary
+      # instead of silently passing.
+      #
+      # One-time creation (needs an existing environment + GHCR pull access):
+      #   az containerapp create \
+      #     --name reporting-nuxt --resource-group rg-reporting-app \
+      #     --environment <env-name> \
+      #     --image ghcr.io/mohamed1204/reporting-nuxt:latest \
+      #     --target-port 3000 --ingress external \
+      #     --env-vars NUXT_API_BASE=https://<reporting-api-fqdn>
+      #
+      # NUXT_COOKIE_SECURE is deliberately NOT set: Container Apps terminates
+      # TLS, so the secure-cookie default of true is correct there. It is only
+      # overridden in docker-compose, which serves plain HTTP on localhost.
+      - name: Deploy Nuxt frontend
+        run: |
+          SHA=${{ github.event.workflow_run.head_sha }}
+          if az containerapp show --name reporting-nuxt --resource-group rg-reporting-app >/dev/null 2>&1; then
+            az containerapp update --name reporting-nuxt --resource-group rg-reporting-app --image ghcr.io/mohamed1204/reporting-nuxt:$SHA
+          else
+            echo "::warning title=Nuxt not deployed::Container app 'reporting-nuxt' does not exist. Image ghcr.io/mohamed1204/reporting-nuxt:$SHA was published but not rolled out. See the create command in deploy.yml."
+          fi
