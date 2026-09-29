@@ -11,6 +11,9 @@ using Serilog;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using ReportingApi1.Repositories;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
+using OpenAI;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -50,6 +53,15 @@ builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IVatRateRepository, VatRateRepository>();
 builder.Services.AddScoped<IVatCalculator, VatCalculationEngine>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
+
+builder.Services.Configure<AiSettings>(builder.Configuration.GetSection(AiSettings.SectionName));
+builder.Services.AddChatClient(sp =>
+{
+    var aiSettings = sp.GetRequiredService<IOptions<AiSettings>>().Value;
+    return new OpenAIClient(aiSettings.ApiKey)
+        .GetChatClient(aiSettings.Model)
+        .AsIChatClient();
+});
 
 // Configure CORS for Vue frontend
 builder.Services.AddCors(options =>
