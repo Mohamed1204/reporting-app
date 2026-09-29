@@ -1,0 +1,79 @@
+{
+  "description": "Five synthetic sale descriptions with manually defined expected outputs for SalesEntryDraftDto. These are reference examples, not results from an AI model.",
+  "rules": [
+    "Extract one sale per example. Return the six fields using camelCase JSON keys.",
+    "Use null when a fact is missing or ambiguous; do not supply default dates, buyer types, or countries.",
+    "BuyerCountry is the destination country's two-letter code. Currency is a three-letter code.",
+    "Amount is the stated amount before VAT. Do not calculate VAT or choose the gross invoice total.",
+    "BuyerType and ProductCategory use the existing enum names as strings.",
+    "SaleDate uses YYYY-MM-DD. Do not infer an ambiguous numeric date's format from the buyer's country.",
+    "These drafts need review and validation before they can become saved sales entries. VAT-number validity is not inferred."
+  ],
+  "examples": [
+    {
+      "id": "complete-sale",
+      "text": "On July 15, 2025, we sold books to a private consumer in Germany. The amount before VAT was EUR 200.",
+      "expected": {
+        "buyerCountry": "DE",
+        "amount": 200,
+        "currency": "EUR",
+        "buyerType": "B2C",
+        "productCategory": "Books",
+        "saleDate": "2025-07-15"
+      },
+      "explanation": "Every field is stated. Germany maps to DE, and private consumer maps to B2C."
+    },
+    {
+      "id": "missing-country",
+      "text": "Sold books to a private consumer on August 4, 2025. Net amount: EUR 85. The destination country was not recorded.",
+      "expected": {
+        "buyerCountry": null,
+        "amount": 85,
+        "currency": "EUR",
+        "buyerType": "B2C",
+        "productCategory": "Books",
+        "saleDate": "2025-08-04"
+      },
+      "explanation": "Leave buyerCountry null. The currency, seller's company, and application defaults do not establish the buyer's destination."
+    },
+    {
+      "id": "ambiguous-date",
+      "text": "Sale date: 07/08/2025. Sold books to a private consumer in France for EUR 120 before VAT. The source does not specify whether the numeric date is month/day/year or day/month/year.",
+      "expected": {
+        "buyerCountry": "FR",
+        "amount": 120,
+        "currency": "EUR",
+        "buyerType": "B2C",
+        "productCategory": "Books",
+        "saleDate": null
+      },
+      "explanation": "The date could mean July 8 or August 7. Both fall within Q3 2025, so the reporting period cannot resolve it either. Ask the user to confirm."
+    },
+    {
+      "id": "multiple-amounts",
+      "text": "Books sold to a private consumer in Germany on September 9, 2025. All amounts are in EUR. Subtotal before discount: 200. Discount: 20. Final amount before VAT: 180. VAT shown on the invoice: 12.60. Total including VAT: 192.60.",
+      "expected": {
+        "buyerCountry": "DE",
+        "amount": 180,
+        "currency": "EUR",
+        "buyerType": "B2C",
+        "productCategory": "Books",
+        "saleDate": "2025-09-09"
+      },
+      "explanation": "Choose the explicitly stated final net amount, 180. Do not use the subtotal, tax amount, or gross total. The illustrative invoice figures are input text, not tax guidance."
+    },
+    {
+      "id": "missing-buyer-type",
+      "text": "Sold books to a customer in Spain on September 22, 2025. The amount before VAT was EUR 65. We have no information about whether the customer is a business or a private consumer.",
+      "expected": {
+        "buyerCountry": "ES",
+        "amount": 65,
+        "currency": "EUR",
+        "buyerType": null,
+        "productCategory": "Books",
+        "saleDate": "2025-09-22"
+      },
+      "explanation": "Customer alone does not establish B2B or B2C. Leave buyerType null instead of using an enum default."
+    }
+  ]
+}
