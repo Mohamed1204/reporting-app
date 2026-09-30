@@ -4,7 +4,9 @@ services:
     image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "Your_Strong_Password123"
+      # From .env. SQL Server only applies it when mssql-data is first created;
+      # after changing it, reset with `docker compose down -v` (wipes the local DB).
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env - see .env.example}"
     ports:
       - "1433:1433"            # optional: lets you connect from SSMS/Azure Data Studio on the host
     volumes:
@@ -22,7 +24,10 @@ services:
     build: ./ReportingApi1            # build context = the backend folder (uses its Dockerfile)
     environment:
       ASPNETCORE_ENVIRONMENT: "Development"   # enables Swagger + the dev seed
-      ConnectionStrings__DefaultConnection: "Server=db;Database=VatReportingDb;User Id=sa;Password=Your_Strong_Password123;TrustServerCertificate=True;MultipleActiveResultSets=true"
+      ConnectionStrings__DefaultConnection: "Server=db;Database=VatReportingDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env};TrustServerCertificate=True;MultipleActiveResultSets=true"
+      # From the git-ignored .env next to this file. Compose refuses to start
+      # without it rather than running an API that can't sign tokens.
+      Jwt__Secret: "${JWT_SECRET:?Set JWT_SECRET in .env - see .env.example}"
     ports:
       - "8080:8080"
     depends_on:

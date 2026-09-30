@@ -11,6 +11,9 @@ using Serilog;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using ReportingApi1.Repositories;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
+using OpenAI;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -19,6 +22,13 @@ builder.Host.UseSerilog((context, config) =>
 
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
 var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>()!;
+
+// Fail at startup rather than issuing tokens signed with a missing or weak key.
+// HS256 needs at least 32 bytes. Set it with user-secrets locally, Jwt__Secret elsewhere.
+if (Encoding.UTF8.GetByteCount(jwtSettings.Secret) < 32)
+    throw new InvalidOperationException(
+        "Jwt:Secret is missing or shorter than 32 bytes. Run `dotnet user-secrets set \"Jwt:Secret\" \"<random value>\"` " +
+        "from ReportingApi1/, or set the Jwt__Secret environment variable.");
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -50,6 +60,16 @@ builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IVatRateRepository, VatRateRepository>();
 builder.Services.AddScoped<IVatCalculator, VatCalculationEngine>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.AddScoped<ISalesExtractionService, SalesExtractionService>();
+
+builder.Services.Configure<AiSettings>(builder.Configuration.GetSection(AiSettings.SectionName));
+builder.Services.AddChatClient(sp =>
+{
+    var aiSettings = sp.GetRequiredService<IOptions<AiSettings>>().Value;
+    return new OpenAIClient(aiSettings.ApiKey)
+        .GetChatClient(aiSettings.Model)
+        .AsIChatClient();
+});
 
 // Configure CORS for Vue frontend
 builder.Services.AddCors(options =>

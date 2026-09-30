@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import SalesTextAssistant from '../components/SalesTextAssistant.vue'
+import type { SalesEntryDraft } from '../services/salesExtraction'
 import { RouterLink } from 'vue-router'
 import { useApiFetch, apiFetch } from '../composables/useApiFetch'
 import { storeToRefs } from 'pinia'
@@ -60,6 +62,29 @@ const newProductCategory = ref<ProductCategory | ''>('')
 const newBuyerHasValidVatNumber = ref(false)
 const newSaleDate = ref('')
 const formError = ref('')
+const salesForm = ref<HTMLFormElement | null>(null)
+const hasFormValues = computed(
+  () =>
+    !!newCountry.value ||
+    newAmount.value !== null ||
+    !!newBuyerType.value ||
+    !!newProductCategory.value ||
+    !!newSaleDate.value ||
+    newBuyerHasValidVatNumber.value,
+)
+
+async function applySalesSuggestions(draft: SalesEntryDraft) {
+  if (isReadOnly.value || isSavingDraft.value || isSubmittingReport.value) return
+  newCountry.value = draft.buyerCountry ?? ''
+  newAmount.value = draft.amount
+  newBuyerType.value = draft.buyerType ?? ''
+  newProductCategory.value = draft.productCategory ?? ''
+  newSaleDate.value = draft.saleDate ?? ''
+  newBuyerHasValidVatNumber.value = false
+  formError.value = ''
+  await nextTick()
+  salesForm.value?.querySelector<HTMLSelectElement>('select')?.focus()
+}
 
 const buyerTypeOptions: BuyerType[] = ['B2B', 'B2C']
 
@@ -387,7 +412,22 @@ const onSubmitReport = async () => {
         </div>
       </section>
 
-      <form v-if="!isReadOnly" class="sales-form" @submit.prevent="onSubmitSalesEntry">
+      <SalesTextAssistant
+        v-if="!isReadOnly"
+        :start-date="periodMinDate"
+        :end-date="periodMaxDate"
+        :has-form-values="hasFormValues"
+        :country-options="countryOptions"
+        :disabled="isSavingDraft || isSubmittingReport"
+        @apply="applySalesSuggestions"
+      />
+
+      <form
+        v-if="!isReadOnly"
+        ref="salesForm"
+        class="sales-form"
+        @submit.prevent="onSubmitSalesEntry"
+      >
         <label>
           Country
           <select v-model="newCountry" name="country" required>
