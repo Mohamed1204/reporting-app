@@ -50,12 +50,27 @@ call goes through Nitro. Changes to the API must keep both working.
 
 **Backend** (from `ReportingApi1/`):
 ```bash
-dotnet run
+dotnet run --launch-profile https
 ```
 Runs on `https://localhost:7033` and `http://localhost:5247` (see
 `launchSettings.json`). Swagger UI at `/swagger`. `UseHttpsRedirection` is
 skipped in Development so the Nuxt BFF can call the HTTP port without tripping
 over the self-signed dev certificate.
+
+Always use the `https` profile (in Visual Studio too). Plain `dotnet run` picks
+the first profile, `http`, which only listens on `:5247` — the Vue SPA's Vite
+proxy targets `:7033`, so login then fails with a 502 from Vite. The `https`
+profile serves both ports, so it works for both frontends.
+
+**Secrets** — none live in `appsettings*.json`. Locally they come from
+user-secrets (from `ReportingApi1/`):
+```bash
+dotnet user-secrets set "Jwt:Secret" "<random, 32+ bytes>"   # required: API refuses to start without it
+dotnet user-secrets set "AI:ApiKey" "sk-..."                 # optional: only the AI extraction endpoint needs it
+```
+Docker compose reads `JWT_SECRET` and `MSSQL_SA_PASSWORD` from a git-ignored
+`.env` at the repo root — copy `.env.example`. Elsewhere use environment
+variables (`Jwt__Secret`, `AI__ApiKey`).
 
 **SPA frontend** (from `frontend/`):
 ```bash
@@ -72,7 +87,7 @@ npm test             # vitest
 ```
 Needs the API on its HTTP port; override with `NUXT_API_BASE` if it moves.
 
-**Whole stack** (from the repo root):
+**Whole stack** (from the repo root, after creating `.env` from `.env.example`):
 ```bash
 docker compose up --build
 ```
@@ -134,6 +149,7 @@ OSS scope only: domestic sales, B2B with valid VAT number, non-EU buyers, and ex
 
 - Expose EF entities directly from API responses — always use DTOs
 - Use `.Result` or `.Wait()` on async calls — always use `await`
+- Put secrets (keys, passwords, signing secrets) in `appsettings*.json`, `docker-compose.yml`, or any committed file — the repo is public. Use user-secrets / `.env` / environment variables
 - Add unnecessary comments or docstrings to unchanged code
 - Create new files unless strictly necessary
 - Add `Co-Authored-By` trailers or any other AI attribution to commit messages or PR bodies — this history is mine, keep it clean

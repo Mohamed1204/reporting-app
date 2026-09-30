@@ -7,3 +7,4 @@ public class AiSettings
     public string ApiKey { get; set; } = string.Empty;
     public string Model { get; set; } = string.Empty;
 }
+//190998 2916
