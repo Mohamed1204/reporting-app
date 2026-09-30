@@ -53,6 +53,7 @@ builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IVatRateRepository, VatRateRepository>();
 builder.Services.AddScoped<IVatCalculator, VatCalculationEngine>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.AddScoped<ISalesExtractionService, SalesExtractionService>();
 
 builder.Services.Configure<AiSettings>(builder.Configuration.GetSection(AiSettings.SectionName));
 builder.Services.AddChatClient(sp =>

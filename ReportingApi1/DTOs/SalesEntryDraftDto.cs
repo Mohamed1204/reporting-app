@@ -3,6 +3,11 @@ using ReportingApi1.Entities;
 
 namespace ReportingApi1.DTOs;
 
+public class ExtractSalesEntryDto
+{
+    public string Text { get; set; } = string.Empty;
+}
+
 /// <summary>
 /// Suggested form values extracted from text, awaiting user review.
 /// Null means missing or ambiguous; this is not a request to save a sales entry.
